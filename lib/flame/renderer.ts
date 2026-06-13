@@ -179,9 +179,9 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
   const tgt: Live = { ...cur, color: [...cur.color] as [number, number, number] };
 
   const base = (e: string): FlameLayers => ({
-    core: `/daemon/${e}/core.png`,
-    tips: `/daemon/${e}/tips.png`,
-    glow: `/daemon/${e}/glow.png`,
+    core: `/daemon/${e}/core.webp`,
+    tips: `/daemon/${e}/tips.webp`,
+    glow: `/daemon/${e}/glow.webp`,
   });
   let curL = base('idle');
   let nextL = curL;
