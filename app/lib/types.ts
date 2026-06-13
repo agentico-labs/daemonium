@@ -30,24 +30,24 @@ export interface SendUsdcDetails {
   toEns?: string;
 }
 export interface RegisterSubnameDetails {
-  /** Full name being created, e.g. "research.ignis.daemonium.eth". */
+  /** Full name being created/claimed, e.g. "ignis-a1b2.daemonium.eth". */
   name: string;
-  /** The agent the subname belongs to (and that owns it), e.g. "ignis". */
-  label: string;
+  /** Leftmost ENS label for setSubnodeRecord, e.g. "ignis-a1b2". */
+  ensLabel: string;
   /** Parent name the subname nests under, e.g. "daemonium.eth". */
   parentName: string;
-  /** Agent label whose wallet owns the new name (usually === label). */
-  ownerLabel: string;
-  /** Agent label whose wallet signs (must own/operate the parent). */
-  signerLabel: string;
+  /** Agent key (= ENS name) whose wallet owns the new name. */
+  ownerKey: string;
+  /** Agent key (= ENS name) whose wallet signs (must own/operate the parent). */
+  signerKey: string;
 }
 export interface SpawnSubagentDetails {
-  /** Proposed sub-agent label, e.g. "research". */
+  /** Proposed sub-agent local label, e.g. "research". */
   label: string;
-  /** Full nested ENS name it will receive, e.g. "research.ignis.daemonium.eth". */
-  name: string;
-  /** Parent agent label that spawns + owns the subtree, e.g. "ignis". */
-  parentLabel: string;
+  /** Full nested ENS name it will receive = its agent key. */
+  childKey: string;
+  /** Parent agent key (= ENS name) that spawns + owns the subtree. */
+  parentKey: string;
   purpose: string;
 }
 

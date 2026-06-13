@@ -1,12 +1,10 @@
 /**
- * Ignis's tools (ai-sdk v6). Two kinds:
- *  - READ-ONLY tools execute immediately and return data (balance, activity, ENS, identity).
- *  - STATE-CHANGING tools NEVER sign. They validate, mint a pending execution, emit a
+ * An agent's tools (ai-sdk v6). Built per-request via a factory that closes over the live
+ * event `emit`, the acting agent's key (= its ENS name), and the verified userId. Two kinds:
+ *  - READ-ONLY tools execute immediately and return data.
+ *  - STATE-CHANGING tools NEVER sign. They validate, mint a per-user pending execution, emit a
  *    `proposal` DaemonEvent, and return a note. Signing happens later in /api/daemon/execute
- *    only after the human taps Confirm. (register_subname / spawn_subagent arrive in B3/B4.)
- *
- * Built per-request via a factory so each tool closes over the live event `emit` and the
- * acting agent label.
+ *    only after the human taps Confirm.
  */
 import "server-only";
 import { tool } from "ai";
@@ -14,32 +12,44 @@ import { z } from "zod";
 import { erc20Abi, formatEther, formatUnits, isAddress, type Address } from "viem";
 import { normalize } from "viem/ens";
 import { publicClient, getIncomingUsdc } from "./evm";
-import { USDC, ENS_PARENT_NAME } from "./chain";
+import { USDC } from "./chain";
 import { getWallet } from "./wallet-store";
 import { parentOf } from "./ens";
+import { leftLabel } from "./identity";
 import { createExecution } from "./executions";
 import { runSubagent } from "./subagent";
 import type { DaemonEvent } from "./types";
 
 export type Emit = (ev: DaemonEvent) => void;
 
-export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
-  async function addressFor(label: string): Promise<Address> {
-    const w = await getWallet(label);
-    if (!w) throw new Error(`Agent "${label}" has no wallet yet`);
+export function buildTools({
+  emit,
+  selfKey,
+  userId,
+}: {
+  emit: Emit;
+  selfKey: string; // the acting agent's ENS name
+  userId: string;
+}) {
+  // Resolve an optional sub-agent label to a full agent key within this user's cluster.
+  const keyFor = (subagent?: string) => (subagent ? `${subagent}.${selfKey}` : selfKey);
+
+  async function addressFor(key: string): Promise<Address> {
+    const w = await getWallet(key);
+    if (!w) throw new Error(`Agent "${key}" has no wallet yet`);
     return w.address as Address;
   }
 
   return {
     get_balance: tool({
       description:
-        "Get the ETH (gas) and USDC balance of an agent's own wallet. Defaults to you (Ignis).",
+        "Get the ETH (gas) and USDC balance of your wallet, or a sub-agent's. Defaults to you.",
       inputSchema: z.object({
-        agent: z.string().optional().describe("Agent label, defaults to the acting agent"),
+        subagent: z.string().optional().describe("Sub-agent label, e.g. 'research'"),
       }),
-      execute: async ({ agent: who }) => {
-        const label = who ?? agent;
-        const address = await addressFor(label);
+      execute: async ({ subagent }) => {
+        const key = keyFor(subagent);
+        const address = await addressFor(key);
         const [eth, usdc] = await Promise.all([
           publicClient.getBalance({ address }),
           publicClient.readContract({
@@ -50,7 +60,7 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
           }),
         ]);
         return {
-          label,
+          agent: key,
           address,
           eth: formatEther(eth),
           usdc: formatUnits(usdc, USDC.decimals),
@@ -74,29 +84,28 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
     }),
 
     get_activity: tool({
-      description: "List recent incoming USDC transfers to an agent's wallet (best effort).",
-      inputSchema: z.object({ agent: z.string().optional() }),
-      execute: async ({ agent: who }) => {
-        const label = who ?? agent;
-        const address = await addressFor(label);
+      description: "List recent incoming USDC transfers to your wallet (best effort).",
+      inputSchema: z.object({ subagent: z.string().optional() }),
+      execute: async ({ subagent }) => {
+        const key = keyFor(subagent);
+        const address = await addressFor(key);
         try {
           const { transfers } = await getIncomingUsdc(address);
-          return { label, address, incoming: transfers.slice(-5) };
+          return { agent: key, address, incoming: transfers.slice(-5) };
         } catch {
-          return { label, address, incoming: [], note: "Could not fetch logs" };
+          return { agent: key, address, incoming: [], note: "Could not fetch logs" };
         }
       },
     }),
 
     get_identity: tool({
       description: "Get your onchain identity: ENS name, wallet address, and cluster relations.",
-      inputSchema: z.object({ agent: z.string().optional() }),
-      execute: async ({ agent: who }) => {
-        const label = who ?? agent;
-        const w = await getWallet(label);
-        if (!w) return { label, exists: false };
+      inputSchema: z.object({ subagent: z.string().optional() }),
+      execute: async ({ subagent }) => {
+        const key = keyFor(subagent);
+        const w = await getWallet(key);
+        if (!w) return { agent: key, exists: false };
         return {
-          label: w.label,
           ensName: w.ensName,
           address: w.address,
           agentId: w.agentId ?? null,
@@ -126,16 +135,17 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
             resolved = null;
           }
         }
-        if (!resolved) {
-          return { proposed: false, error: `Could not resolve recipient "${to}"` };
-        }
+        if (!resolved) return { proposed: false, error: `Could not resolve recipient "${to}"` };
 
-        const card = createExecution({
-          action: "send_usdc",
-          agent,
-          summary: `Send ${amount} USDC to ${toEns ?? resolved}`,
-          details: { action: "send_usdc", to: resolved, amount, toEns },
-        });
+        const card = createExecution(
+          {
+            action: "send_usdc",
+            agent: selfKey,
+            summary: `Send ${amount} USDC to ${toEns ?? resolved}`,
+            details: { action: "send_usdc", to: resolved, amount, toEns },
+          },
+          userId,
+        );
         emit({ type: "proposal", card });
         return {
           proposed: true,
@@ -152,24 +162,24 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
         "NOT execute until the human confirms.",
       inputSchema: z.object({}),
       execute: async () => {
-        const w = await getWallet(agent);
-        if (!w?.ensName) {
-          return { proposed: false, error: `Agent "${agent}" has no wallet/name yet` };
-        }
-        const parentName = parentOf(w.ensName) || ENS_PARENT_NAME;
-        const card = createExecution({
-          action: "register_subname",
-          agent,
-          summary: `Claim identity ${w.ensName} (ENS subname + ERC-8004 card)`,
-          details: {
+        const me = await getWallet(selfKey);
+        if (!me?.ensName) return { proposed: false, error: "You have no wallet/name yet" };
+        const card = createExecution(
+          {
             action: "register_subname",
-            name: w.ensName,
-            label: agent,
-            parentName,
-            ownerLabel: agent,
-            signerLabel: agent,
+            agent: selfKey,
+            summary: `Claim identity ${me.ensName} (ENS subname + ERC-8004 card)`,
+            details: {
+              action: "register_subname",
+              name: me.ensName,
+              ensLabel: leftLabel(me.ensName),
+              parentName: parentOf(me.ensName),
+              ownerKey: selfKey,
+              signerKey: selfKey,
+            },
           },
-        });
+          userId,
+        );
         emit({ type: "proposal", card });
         return {
           proposed: true,
@@ -188,17 +198,16 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
         purpose: z.string().describe("What this sub-agent is for"),
       }),
       execute: async ({ label, purpose }) => {
-        const me = await getWallet(agent);
-        if (!me?.ensName) {
-          return { proposed: false, error: `You ("${agent}") have no name yet` };
-        }
-        const name = `${label}.${me.ensName}`;
-        const card = createExecution({
-          action: "spawn_subagent",
-          agent,
-          summary: `Spawn sub-agent ${name} (own wallet + nested subname + card)`,
-          details: { action: "spawn_subagent", label, name, parentLabel: agent, purpose },
-        });
+        const childKey = `${label}.${selfKey}`;
+        const card = createExecution(
+          {
+            action: "spawn_subagent",
+            agent: selfKey,
+            summary: `Spawn sub-agent ${childKey} (own wallet + nested subname + card)`,
+            details: { action: "spawn_subagent", label, childKey, parentKey: selfKey, purpose },
+          },
+          userId,
+        );
         emit({ type: "proposal", card });
         return {
           proposed: true,
@@ -217,8 +226,9 @@ export function buildTools({ emit, agent }: { emit: Emit; agent: string }) {
         task: z.string().describe("The task to delegate"),
       }),
       execute: async ({ label, task }) => {
-        const sub = await getWallet(label);
-        if (!sub || sub.parent !== agent) {
+        const childKey = `${label}.${selfKey}`;
+        const sub = await getWallet(childKey);
+        if (!sub || sub.parent !== selfKey) {
           return { error: `No sub-agent "${label}" in your cluster` };
         }
         emit({ type: "state", state: "delegating" });

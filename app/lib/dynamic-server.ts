@@ -1,20 +1,18 @@
 /**
  * Dynamic server-wallet integration — "the agent IS the wallet; Dynamic is the manager".
  *
- * Each agent (Ignis, and every sub-agent it spawns) gets its OWN MPC server wallet via
- * createWalletAccount. The backend holds the key shares (in wallet-store) and signs
- * autonomously; the human's confirmation gate lives one layer up in /api/daemon/execute.
+ * Each agent (a user's Ignis, and every sub-agent it spawns) gets its OWN MPC server wallet
+ * via createWalletAccount. We key every wallet by its ENS name (e.g.
+ * "ignis-a1b2.daemonium.eth"), so the same string is the store key, the signer key, and the
+ * identity. The backend holds the key shares and signs autonomously; the human confirmation
+ * gate lives one layer up in /api/daemon/execute.
  */
 import "server-only";
 import { DynamicEvmWalletClient } from "@dynamic-labs-wallet/node-evm";
 import { ThresholdSignatureScheme } from "@dynamic-labs-wallet/node";
 import type { WalletClient } from "viem";
-import { CHAIN, CHAIN_ID, SEPOLIA_RPC_URL, ENS_PARENT_NAME } from "./chain";
-import {
-  getWallet,
-  putWallet,
-  type StoredWallet,
-} from "./wallet-store";
+import { CHAIN, CHAIN_ID, SEPOLIA_RPC_URL } from "./chain";
+import { getWallet, putWallet, type StoredWallet } from "./wallet-store";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -41,18 +39,13 @@ export function getServerClient(): Promise<DynamicEvmWalletClient> {
   return clientPromise;
 }
 
-/** Build the ENS name for an agent from its label and (optional) parent's ENS name. */
-function ensNameFor(label: string, parentEnsName?: string): string {
-  return parentEnsName ? `${label}.${parentEnsName}` : `${label}.${ENS_PARENT_NAME}`;
-}
-
 /**
- * Create a brand-new MPC wallet for an agent and persist it. Returns the stored record.
+ * Create a brand-new MPC wallet for an agent (keyed by its ENS name) and persist it.
  * Call once per agent — this is what makes each (sub-)agent its own wallet.
  */
 export async function createAgentWallet(
-  label: string,
-  opts: { parentLabel?: string } = {},
+  ensName: string,
+  opts: { parentEnsName?: string } = {},
 ): Promise<StoredWallet> {
   const client = await getServerClient();
   const password = requireEnv("DAEMON_WALLET_PASSWORD");
@@ -63,42 +56,36 @@ export async function createAgentWallet(
     backUpToDynamic: true,
   });
 
-  let parentEnsName: string | undefined;
-  if (opts.parentLabel) {
-    const parent = await getWallet(opts.parentLabel);
-    parentEnsName = parent?.ensName;
-  }
-
   const record: StoredWallet = {
-    label,
+    label: ensName, // store key = ENS name
     address: result.walletMetadata.accountAddress,
     walletMetadata: result.walletMetadata,
     externalServerKeyShares: result.externalServerKeyShares,
     createdAt: new Date().toISOString(),
-    ensName: ensNameFor(label, parentEnsName),
-    parent: opts.parentLabel,
+    ensName,
+    parent: opts.parentEnsName,
     children: [],
   };
   await putWallet(record);
   return record;
 }
 
-/** Get an agent's wallet, creating it if it doesn't exist yet. Idempotent. */
+/** Get an agent's wallet by ENS-name key, creating it if it doesn't exist yet. Idempotent. */
 export async function ensureAgentWallet(
-  label: string,
-  opts: { parentLabel?: string } = {},
+  ensName: string,
+  opts: { parentEnsName?: string } = {},
 ): Promise<StoredWallet> {
-  return (await getWallet(label)) ?? (await createAgentWallet(label, opts));
+  return (await getWallet(ensName)) ?? (await createAgentWallet(ensName, opts));
 }
 
 /**
  * A viem WalletClient backed by the agent's MPC key shares. Every call reloads the shares
- * from the store (the SDK is stateless). writeContract/sendTransaction on this client
- * sign via MPC AND broadcast on Sepolia.
+ * from the store (the SDK is stateless). writeContract/sendTransaction on this client sign
+ * via MPC AND broadcast on Sepolia. `key` is the agent's ENS name.
  */
-export async function getSigner(label: string): Promise<WalletClient> {
-  const wallet = await getWallet(label);
-  if (!wallet) throw new Error(`No wallet for agent "${label}"`);
+export async function getSigner(key: string): Promise<WalletClient> {
+  const wallet = await getWallet(key);
+  if (!wallet) throw new Error(`No wallet for agent "${key}"`);
   const client = await getServerClient();
   return client.getWalletClient({
     walletMetadata: wallet.walletMetadata,

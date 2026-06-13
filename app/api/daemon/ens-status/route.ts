@@ -1,36 +1,47 @@
 /**
- * Read-only check of the ENS bootstrap prerequisite for B3/B4. Tells you whether Ignis's
- * wallet is authorized to mint subnames under the parent name, and if not, exactly what to do.
- *   curl localhost:3000/api/daemon/ens-status
+ * Read-only check of the ENS bootstrap prerequisite, scoped to the calling user's Ignis.
+ * Tells you whether their wallet can mint its subname under the parent, and if not, what to do.
+ *   curl localhost:3000/api/daemon/ens-status -H "Authorization: Bearer <token>"
  */
-import { NextResponse } from "next/server";
-import { ENS, ENS_PARENT_NAME } from "@/app/lib/chain";
-import { canManageParent } from "@/app/lib/ens";
+import { ENS } from "@/app/lib/chain";
+import { canManageParent, parentOf } from "@/app/lib/ens";
 import { ensureAgentWallet } from "@/app/lib/dynamic-server";
+import { verifyUser, AuthError } from "@/app/lib/auth";
+import { rootEnsName } from "@/app/lib/identity";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const ignis = await ensureAgentWallet("ignis");
+export async function GET(req: Request) {
+  let userId: string;
+  try {
+    ({ userId } = await verifyUser(req));
+  } catch (err) {
+    const status = err instanceof AuthError ? err.status : 401;
+    return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
+  }
+
+  const ignis = await ensureAgentWallet(rootEnsName(userId));
   const operator = ignis.address as `0x${string}`;
+  const parent = parentOf(ignis.ensName!);
 
   let canManage = false;
   let note: string | undefined;
   try {
-    canManage = await canManageParent(ENS_PARENT_NAME, operator);
+    canManage = await canManageParent(parent, operator);
   } catch (err) {
     note =
-      `Could not read owner of ${ENS_PARENT_NAME} — is it wrapped in the NameWrapper? ` +
+      `Could not read owner of ${parent} — is it wrapped in the NameWrapper? ` +
       (err instanceof Error ? err.message : String(err));
   }
 
-  return NextResponse.json({
-    parent: ENS_PARENT_NAME,
+  return Response.json({
+    ensName: ignis.ensName,
+    parent,
     ignisAddress: operator,
     canManage,
     note,
     howToAuthorize: canManage
-      ? "Ready — Ignis can mint subnames under the parent."
-      : `From the wallet that owns ${ENS_PARENT_NAME}, call setApprovalForAll(${operator}, true) on the NameWrapper at ${ENS.nameWrapper} (Sepolia). The parent must be wrapped.`,
+      ? "Ready — Ignis can mint its subname under the parent."
+      : `From the wallet that owns ${parent}, call setApprovalForAll(${operator}, true) on the NameWrapper at ${ENS.nameWrapper} (Sepolia). The parent must be wrapped.`,
   });
 }

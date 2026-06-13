@@ -1,30 +1,43 @@
 /**
- * THE ONLY SIGNER. The human-confirm tap POSTs an executionId here; this route looks up
- * the validated proposal and runs it through the action executor (which loads the agent's
- * MPC key shares and broadcasts). The client never supplies amounts/addresses or signs —
- * it only references a proposal the server already minted. This is the confirmation gate.
+ * THE ONLY SIGNER. The human-confirm tap POSTs an executionId here (with the user's Dynamic
+ * token); this route verifies the caller, confirms the proposal belongs to THEM, then runs it
+ * through the action executor (which loads the agent's MPC key shares and broadcasts). The
+ * client never supplies amounts/addresses or signs — it only references a proposal the server
+ * already minted for that same user. This is the confirmation gate.
  */
-import { NextResponse } from "next/server";
 import { takeExecution } from "@/app/lib/executions";
 import { executeProposal } from "@/app/lib/actions";
+import { verifyUser, AuthError } from "@/app/lib/auth";
 import type { ExecuteRequest } from "@/app/lib/types";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  const body = (await req.json().catch(() => null)) as ExecuteRequest | null;
-  if (!body?.executionId) {
-    return NextResponse.json({ ok: false, error: "executionId required" }, { status: 400 });
+  let userId: string;
+  try {
+    ({ userId } = await verifyUser(req));
+  } catch (err) {
+    const status = err instanceof AuthError ? err.status : 401;
+    return Response.json({ ok: false, error: err instanceof Error ? err.message : "Unauthorized" }, { status });
   }
 
-  const card = takeExecution(body.executionId);
-  if (!card) {
-    return NextResponse.json(
+  const body = (await req.json().catch(() => null)) as ExecuteRequest | null;
+  if (!body?.executionId) {
+    return Response.json({ ok: false, error: "executionId required" }, { status: 400 });
+  }
+
+  const entry = takeExecution(body.executionId);
+  if (!entry) {
+    return Response.json(
       { ok: false, error: "Unknown or already-used executionId" },
       { status: 404 },
     );
   }
+  // A proposal can only be executed by the user who created it.
+  if (entry.userId !== userId) {
+    return Response.json({ ok: false, error: "Not your proposal" }, { status: 403 });
+  }
 
-  const result = await executeProposal(card);
-  return NextResponse.json(result, { status: result.ok ? 200 : 500 });
+  const result = await executeProposal(entry.card);
+  return Response.json(result, { status: result.ok ? 200 : 500 });
 }

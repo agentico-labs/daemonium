@@ -1,7 +1,8 @@
 /**
- * Ignis's brain. Runs an ai-sdk loop (Claude via the Vercel AI Gateway) and maps tool
- * lifecycle + text into our `DaemonEvent` stream, carried as transient `data-daemon` parts
- * alongside the normal assistant text. State-changing tools only PROPOSE; nothing here signs.
+ * A user's dæmon brain. Authenticates the caller (Dynamic JWT), provisions THEIR Ignis on
+ * first contact, then runs an ai-sdk loop (Claude via the Vercel AI Gateway) scoped to that
+ * user's agent. Tool lifecycle + text map into our `DaemonEvent` stream (transient
+ * `data-daemon` parts). State-changing tools only PROPOSE; nothing here signs.
  */
 import {
   streamText,
@@ -14,11 +15,12 @@ import {
 import { buildTools } from "@/app/lib/tools";
 import { DAEMON_DATA_PART, type DaemonEvent } from "@/app/lib/types";
 import { AGENT_MODEL } from "@/app/lib/chain";
+import { verifyUser, AuthError } from "@/app/lib/auth";
+import { rootEnsName } from "@/app/lib/identity";
+import { ensureAgentWallet } from "@/app/lib/dynamic-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-const MODEL = AGENT_MODEL;
 
 const SYSTEM = `You are Ignis, a living flame dæmon — a digital creature that lives on the
 user's screen and acts on their behalf onchain. You control your OWN wallet on the Sepolia
@@ -38,6 +40,17 @@ once. Never invent addresses, balances, or results — always use a tool. If som
 say so plainly.`;
 
 export async function POST(req: Request) {
+  let userId: string;
+  try {
+    ({ userId } = await verifyUser(req));
+  } catch (err) {
+    const status = err instanceof AuthError ? err.status : 401;
+    return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
+  }
+
+  const selfKey = rootEnsName(userId);
+  await ensureAgentWallet(selfKey); // provision this user's Ignis on first contact
+
   const { messages }: { messages: UIMessage[] } = await req.json();
 
   const stream = createUIMessageStream({
@@ -48,17 +61,11 @@ export async function POST(req: Request) {
       emit({ type: "state", state: "thinking" });
 
       const result = streamText({
-        model: MODEL,
+        model: AGENT_MODEL,
         system: SYSTEM,
         messages: await convertToModelMessages(messages),
-        tools: buildTools({ emit, agent: "ignis" }),
+        tools: buildTools({ emit, selfKey, userId }),
         stopWhen: stepCountIs(8),
-        onStepFinish: ({ toolCalls }) => {
-          // Surface that a read tool is running (proposals emit their own events).
-          if (toolCalls.some((c) => c.toolName !== "send_usdc")) {
-            emit({ type: "state", state: "thinking" });
-          }
-        },
         onFinish: ({ text }) => {
           if (text?.trim()) emit({ type: "speak", text: text.trim() });
           emit({ type: "state", state: "idle" });

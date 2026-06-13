@@ -9,12 +9,19 @@
 import { useCallback, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
+import { getAuthToken } from "@dynamic-labs/sdk-react-core";
 import type {
   DaemonEvent,
   DaemonState,
   ProposalCard,
   ExecuteResponse,
 } from "./types";
+
+/** Authorization header carrying the Dynamic session JWT, resolved at request time. */
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export function useDaemon() {
   const [state, setState] = useState<DaemonState>("idle");
@@ -24,7 +31,7 @@ export function useDaemon() {
   >(null);
 
   const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/agent" }),
+    transport: new DefaultChatTransport({ api: "/api/agent", headers: authHeaders }),
     onData: (part) => {
       if (part.type !== "data-daemon") return;
       const ev = part.data as DaemonEvent;
@@ -58,7 +65,7 @@ export function useDaemon() {
       try {
         const res = (await fetch("/api/daemon/execute", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: { "content-type": "application/json", ...authHeaders() },
           body: JSON.stringify({ executionId }),
         }).then((r) => r.json())) as ExecuteResponse;
 

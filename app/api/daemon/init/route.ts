@@ -1,19 +1,29 @@
 /**
- * Provision Ignis. POST once (idempotent) to create its server wallet, then it returns
- * the address + balances so you know where to send faucet ETH and Circle USDC.
- *   curl -X POST localhost:3000/api/daemon/init
+ * Provision the calling user's Ignis. POST (idempotent) with the Dynamic auth token to create
+ * their server wallet, then it returns the address + balances so they know where to send
+ * faucet ETH and Circle USDC.
+ *   curl -X POST localhost:3000/api/daemon/init -H "Authorization: Bearer <token>"
  */
-import { NextResponse } from "next/server";
 import { erc20Abi, formatEther, formatUnits } from "viem";
 import { ensureAgentWallet } from "@/app/lib/dynamic-server";
 import { publicClient } from "@/app/lib/evm";
 import { USDC, explorerAddress } from "@/app/lib/chain";
+import { verifyUser, AuthError } from "@/app/lib/auth";
+import { rootEnsName } from "@/app/lib/identity";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+export async function POST(req: Request) {
+  let userId: string;
   try {
-    const ignis = await ensureAgentWallet("ignis");
+    ({ userId } = await verifyUser(req));
+  } catch (err) {
+    const status = err instanceof AuthError ? err.status : 401;
+    return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
+  }
+
+  try {
+    const ignis = await ensureAgentWallet(rootEnsName(userId));
     const address = ignis.address as `0x${string}`;
 
     const [eth, usdc] = await Promise.all([
@@ -26,22 +36,14 @@ export async function POST() {
       }),
     ]);
 
-    return NextResponse.json({
-      identity: {
-        label: ignis.label,
-        ensName: ignis.ensName,
-        address: ignis.address,
-      },
-      balances: {
-        eth: formatEther(eth),
-        usdc: formatUnits(usdc, USDC.decimals),
-      },
+    return Response.json({
+      identity: { ensName: ignis.ensName, address: ignis.address },
+      balances: { eth: formatEther(eth), usdc: formatUnits(usdc, USDC.decimals) },
       explorer: explorerAddress(ignis.address),
-      fundHint:
-        "Send Sepolia ETH (faucet) and Circle test USDC to the address above before sending.",
+      fundHint: "Send Sepolia ETH + Circle test USDC to the address above before sending.",
     });
   } catch (err) {
-    return NextResponse.json(
+    return Response.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 },
     );

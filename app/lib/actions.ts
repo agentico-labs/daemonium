@@ -46,18 +46,18 @@ export async function executeProposal(card: ProposalCard): Promise<ExecuteRespon
 async function spawnSubagent(
   details: SpawnSubagentDetails,
 ): Promise<ExecuteResponse> {
-  const { label, name, parentLabel } = details;
+  const { label, childKey, parentKey } = details;
   try {
-    const parent = await getWallet(parentLabel);
-    if (!parent?.ensName) return { ok: false, error: `No parent "${parentLabel}"` };
+    const parent = await getWallet(parentKey);
+    if (!parent?.ensName) return { ok: false, error: `No parent "${parentKey}"` };
 
-    // 1. The sub-agent's own wallet — it IS this address.
-    const child = await createAgentWallet(label, { parentLabel });
+    // 1. The sub-agent's own wallet — it IS this address (keyed by its nested ENS name).
+    const child = await createAgentWallet(childKey, { parentEnsName: parent.ensName });
     const childAddr = child.address as Address;
 
     // 2. Link it into the parent's cluster.
-    await updateWallet(parentLabel, {
-      children: Array.from(new Set([...parent.children, label])),
+    await updateWallet(parentKey, {
+      children: Array.from(new Set([...parent.children, childKey])),
     });
 
     // 3. Parent mints the nested subname, owned by the sub-agent.
@@ -65,12 +65,12 @@ async function spawnSubagent(
       parentName: parent.ensName,
       label,
       owner: childAddr,
-      signerLabel: parentLabel,
+      signerLabel: parentKey,
     });
 
     // 4. Best-effort: seed gas from the parent, then the sub-agent claims its own identity.
     try {
-      const parentSigner = await getSigner(parentLabel);
+      const parentSigner = await getSigner(parentKey);
       const seedHash = await parentSigner.sendTransaction({
         to: childAddr,
         value: parseEther(SUBAGENT_GAS_SEED),
@@ -79,10 +79,10 @@ async function spawnSubagent(
       });
       await publicClient.waitForTransactionReceipt({ hash: seedHash });
 
-      const uri = agentCardUri(label);
-      const { agentId } = await registerIdentity({ agentURI: uri, signerLabel: label });
-      await setAgentCardRecord({ name, uri, signerLabel: label });
-      await updateWallet(label, { agentId, agentCardUri: uri });
+      const uri = agentCardUri(childKey);
+      const { agentId } = await registerIdentity({ agentURI: uri, signerLabel: childKey });
+      await setAgentCardRecord({ name: childKey, uri, signerLabel: childKey });
+      await updateWallet(childKey, { agentId, agentCardUri: uri });
     } catch {
       // Wallet + nested subname already exist; identity can be retried later.
     }
@@ -101,24 +101,29 @@ async function spawnSubagent(
 async function claimIdentity(
   details: RegisterSubnameDetails,
 ): Promise<ExecuteResponse> {
-  const { label, parentName, ownerLabel, signerLabel, name } = details;
+  const { name, ensLabel, parentName, ownerKey, signerKey } = details;
   try {
-    const ownerWallet = await getWallet(ownerLabel);
-    if (!ownerWallet) return { ok: false, error: `No wallet for "${ownerLabel}"` };
+    const ownerWallet = await getWallet(ownerKey);
+    if (!ownerWallet) return { ok: false, error: `No wallet for "${ownerKey}"` };
     const owner = ownerWallet.address as Address;
 
     // 1. Mint the (nested) subname, owned by the agent, with the PublicResolver set.
-    const { hash } = await ensRegisterSubname({ parentName, label, owner, signerLabel });
+    const { hash } = await ensRegisterSubname({
+      parentName,
+      label: ensLabel,
+      owner,
+      signerLabel: signerKey,
+    });
 
     // 2. Register the ERC-8004 identity NFT (signed by the agent itself).
-    const uri = agentCardUri(label);
-    const { agentId } = await registerIdentity({ agentURI: uri, signerLabel: ownerLabel });
+    const uri = agentCardUri(name);
+    const { agentId } = await registerIdentity({ agentURI: uri, signerLabel: ownerKey });
 
     // 3. Point the ENS name's agent-card text record at the card.
-    await setAgentCardRecord({ name, uri, signerLabel: ownerLabel });
+    await setAgentCardRecord({ name, uri, signerLabel: ownerKey });
 
     // 4. Persist the identity onto the wallet record.
-    await updateWallet(ownerLabel, { agentId, agentCardUri: uri });
+    await updateWallet(ownerKey, { agentId, agentCardUri: uri });
 
     return { ok: true, hash };
   } catch (err) {
