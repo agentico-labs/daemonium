@@ -1,4 +1,4 @@
-import type { DaemonState } from '@/lib/types';
+import type { DaemonState } from '@/app/lib/types';
 import { STATE_META } from '@/lib/stateMeta';
 
 export function StatusPill({

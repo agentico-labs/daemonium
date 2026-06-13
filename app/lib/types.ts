@@ -107,6 +107,12 @@ export type DaemonEvent =
 /** The custom data-part name used on the ai-sdk UI message stream. */
 export const DAEMON_DATA_PART = "data-daemon" as const;
 
+/** POST /api/tts — body. Returns an audio stream to pipe into an AnalyserNode. */
+export interface TtsRequest {
+  text: string;
+  voice?: string; // default "nova"
+}
+
 /** Request body for the confirm tap → POST /api/daemon/execute. */
 export interface ExecuteRequest {
   executionId: string;

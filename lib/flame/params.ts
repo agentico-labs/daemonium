@@ -1,4 +1,4 @@
-import type { DaemonState } from '@/lib/types';
+import type { DaemonState } from '@/app/lib/types';
 
 /**
  * The tunable look of the flame for a single DaemonState. The renderer lerps

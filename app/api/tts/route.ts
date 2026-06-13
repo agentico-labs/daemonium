@@ -11,7 +11,7 @@
  * we can pass straight through — no extra dependency, and first bytes arrive sooner than
  * buffering the whole clip. The API key stays server-side; the browser never sees it.
  */
-import type { TtsRequest } from "@/lib/types";
+import type { TtsRequest } from "@/app/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;

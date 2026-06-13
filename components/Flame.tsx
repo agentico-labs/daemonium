@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { DaemonState } from '@/lib/types';
+import type { DaemonState } from '@/app/lib/types';
 import {
   STATE_IMAGE,
   STATE_META,

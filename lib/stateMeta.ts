@@ -1,4 +1,4 @@
-import type { DaemonState } from '@/lib/types';
+import type { DaemonState } from '@/app/lib/types';
 
 export interface StateMeta {
   /** Default status-pill copy for this state (an event may override via label). */
