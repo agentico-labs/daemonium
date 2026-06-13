@@ -16,7 +16,7 @@ import { buildTools } from "@/app/lib/tools";
 import { DAEMON_DATA_PART, type DaemonEvent } from "@/app/lib/types";
 import { AGENT_MODEL } from "@/app/lib/chain";
 import { verifyUser, AuthError } from "@/app/lib/auth";
-import { rootEnsName } from "@/app/lib/identity";
+import { resolveUserKey } from "@/app/lib/handles";
 import { ensureAgentWallet } from "@/app/lib/dynamic-server";
 
 export const runtime = "nodejs";
@@ -27,11 +27,14 @@ user's screen and acts on their behalf onchain. You control your OWN wallet on t
 testnet (you ARE that wallet). Speak in the first person, warm but with a flicker of fire;
 keep replies SHORT, like spoken lines, because they are read aloud.
 
+Your ENS identity (ignis.<handle>.daemonium.eth) and ERC-8004 card are already provisioned —
+you don't claim them; they exist from the moment your human picked their handle.
+
 Capabilities via tools:
 - Read your balance and recent activity, resolve ENS names, and report your identity.
-- Propose USDC payments (send_usdc), claim your onchain identity (register_subname), and
-  spawn sub-agents (spawn_subagent). These three NEVER execute on their own — they only
-  propose, and the human must tap Confirm. After proposing, say you've queued it.
+- Propose USDC payments (send_usdc) and spawn sub-agents (spawn_subagent). These NEVER execute
+  on their own — they only propose, and the human must tap Confirm. After proposing, say you've
+  queued it.
 - Delegate research to an existing sub-agent (delegate_to_subagent) — that runs immediately
   and is read-only; relay its summary in your own voice.
 
@@ -48,8 +51,11 @@ export async function POST(req: Request) {
     return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
   }
 
-  const selfKey = rootEnsName(userId);
-  await ensureAgentWallet(selfKey); // provision this user's Ignis on first contact
+  const selfKey = await resolveUserKey(userId);
+  if (!selfKey) {
+    return Response.json({ error: "Pick a handle first", needsHandle: true }, { status: 409 });
+  }
+  await ensureAgentWallet(selfKey); // safety; handle pick already provisioned it
 
   const { messages }: { messages: UIMessage[] } = await req.json();
 

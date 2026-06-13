@@ -9,7 +9,7 @@ import { ensureAgentWallet } from "@/app/lib/dynamic-server";
 import { publicClient } from "@/app/lib/evm";
 import { USDC, explorerAddress } from "@/app/lib/chain";
 import { verifyUser, AuthError } from "@/app/lib/auth";
-import { rootEnsName } from "@/app/lib/identity";
+import { resolveUserKey } from "@/app/lib/handles";
 
 export const runtime = "nodejs";
 
@@ -22,8 +22,13 @@ export async function POST(req: Request) {
     return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
   }
 
+  const key = await resolveUserKey(userId);
+  if (!key) {
+    return Response.json({ error: "Pick a handle first", needsHandle: true }, { status: 409 });
+  }
+
   try {
-    const ignis = await ensureAgentWallet(rootEnsName(userId));
+    const ignis = await ensureAgentWallet(key);
     const address = ignis.address as `0x${string}`;
 
     const [eth, usdc] = await Promise.all([

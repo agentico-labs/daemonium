@@ -11,7 +11,7 @@ import { ensureAgentWallet } from "@/app/lib/dynamic-server";
 import { ensureMinter } from "@/app/lib/minter";
 import { publicClient } from "@/app/lib/evm";
 import { verifyUser, AuthError } from "@/app/lib/auth";
-import { rootEnsName } from "@/app/lib/identity";
+import { resolveUserKey } from "@/app/lib/handles";
 
 export const runtime = "nodejs";
 
@@ -24,7 +24,8 @@ export async function GET(req: Request) {
     return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
   }
 
-  const ignis = await ensureAgentWallet(rootEnsName(userId));
+  const key = await resolveUserKey(userId);
+  const ignis = key ? await ensureAgentWallet(key) : null;
   const minter = await ensureMinter();
   const minterAddr = minter.address as `0x${string}`;
 
@@ -40,7 +41,7 @@ export async function GET(req: Request) {
   const minterEth = await publicClient.getBalance({ address: minterAddr });
 
   return Response.json({
-    yourIgnis: { ensName: ignis.ensName, address: ignis.address },
+    yourIgnis: ignis ? { ensName: ignis.ensName, address: ignis.address } : null,
     minter: {
       address: minterAddr,
       approved: minterApproved,

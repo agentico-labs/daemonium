@@ -30,6 +30,22 @@ export function nodeOf(name: string): Hash {
   return namehash(normalize(name)) as Hash;
 }
 
+/**
+ * True if a wrapped name already exists (NameWrapper.ownerOf returns a non-zero owner; it
+ * returns address(0) for non-existent names rather than reverting). Used as an idempotency
+ * gate, so RPC/transport errors are NOT swallowed — they propagate, aborting provisioning
+ * rather than letting a flaky read masquerade as "doesn't exist" and trigger a re-mint.
+ */
+export async function subnameExists(name: string): Promise<boolean> {
+  const owner = (await publicClient.readContract({
+    address: ENS.nameWrapper,
+    abi: nameWrapperAbi,
+    functionName: "ownerOf",
+    args: [BigInt(nodeOf(name))],
+  })) as `0x${string}`;
+  return owner !== "0x0000000000000000000000000000000000000000";
+}
+
 /** Strip the leftmost label: "research.ignis.daemonium.eth" → "ignis.daemonium.eth". */
 export function parentOf(name: string): string {
   return name.split(".").slice(1).join(".");
