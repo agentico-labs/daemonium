@@ -1,0 +1,11 @@
+allowBuilds:
+  '@reown/appkit': true
+  bigint-buffer: true
+  bufferutil: true
+  protobufjs: true
+  sharp: false
+  unrs-resolver: false
+  utf-8-validate: true
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
