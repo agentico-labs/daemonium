@@ -12,12 +12,14 @@ The key insight (and our headline for the ENS prize): **the subname subtree _is_
 The namespace doubles as the org chart and the trust boundary. "Under `ignis.daemonium.eth`" =
 "part of Ignis's cluster" = "allowed to interact." A name isn't decoration; it's structure.
 
-> **Per-user naming.** Every user gets their _own_ Ignis, so they can't all share
-> `ignis.daemonium.eth`. We derive a stable, collision-resistant name from the user's Dynamic id:
-> `ignis-<id>.daemonium.eth` (e.g. `ignis-a1b2c3d4.daemonium.eth`), computed in
-> `app/lib/identity.ts` and used _as the agent's key_ everywhere (store key, signer key, identity).
-> A user's sub-agents nest under their own dæmon: `research.ignis-<id>.daemonium.eth`. The examples
-> below use plain `ignis.daemonium.eth` for readability — mentally append the per-user suffix.
+> **Per-user naming (handles).** Every user gets their _own_ Ignis. At first login they pick a
+> **handle** and own a whole subtree: their dæmon is `ignis.<handle>.daemonium.eth`, nested under
+> `<handle>.daemonium.eth`. So the cluster is 3 levels —
+> `daemonium.eth` → `<handle>.daemonium.eth` → `ignis.<handle>.daemonium.eth` → `research.ignis.<handle>.daemonium.eth`.
+> The full ENS name is the agent's key everywhere (store key, signer key, identity); the
+> `userId → handle` map lives in `app/lib/handles.ts`, validation in `app/lib/handle-format.ts`.
+> Identity is **auto-claimed** at handle pick (`app/lib/provision.ts`) — no confirm. Examples below
+> use plain `ignis.daemonium.eth` for readability — mentally insert the `<handle>` level.
 
 ## Background: the four pieces of ENS you need
 
@@ -76,15 +78,14 @@ So a fully-formed dæmon identity is three things:
 the caller must be **the wrapped owner of the parent**, _or_ an operator the owner approved via
 `setApprovalForAll`. This has direct consequences for our cluster:
 
-- To create `ignis-<id>.daemonium.eth`, the caller must control **`daemonium.eth`** — owned by
-  the human. We **don't** approve each user's Ignis individually (that wouldn't scale: every
-  user is a fresh address). Instead we use a **minter**: one backend wallet (`app/lib/minter.ts`)
-  that the parent's owner approves **once** via `NameWrapper.setApprovalForAll(<minter>, true)`.
-  After that the minter mints every user's root subname — with `owner` set to that user's Ignis —
-  so each user still **owns** its own name without any per-user approval.
-- To create `research.ignis-<id>.daemonium.eth`, the caller must control the user's own Ignis
-  name — which that Ignis now owns, so **Ignis signs it itself**. No minter, no human approval
-  for a user's own subtree.
+- The two upper levels are minted by a **minter** (`app/lib/minter.ts`) — one backend wallet the
+  parent's owner approves **once** via `NameWrapper.setApprovalForAll(<minter>, true)`. The minter
+  mints `<handle>.daemonium.eth` (owned by the minter), then `ignis.<handle>.daemonium.eth` under it
+  (owned by that user's Ignis). It can mint the second level because it owns the first. No per-user
+  approval — `setApprovalForAll` is per-operator, so one approval covers unlimited users.
+- To create `research.ignis.<handle>.daemonium.eth`, the caller must control the user's own Ignis
+  name — which that Ignis owns, so **Ignis signs it itself**. No minter, no human approval for a
+  user's own subtree.
 
 That's the trust boundary made literal: you can only mint under a name you control. `setApprovalForAll`
 is **per-operator, not per-name**, which is exactly why one approved minter covers unlimited users.

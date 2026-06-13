@@ -4,6 +4,7 @@ import { DynamicWidget, useDynamicContext } from '@dynamic-labs/sdk-react-core';
 import { useAccount } from 'wagmi';
 import { explorerAddress } from '../lib/chain';
 import { Console } from '../components/console';
+import { HandleGate } from '../components/handle-gate';
 
 /**
  * Workstream B dev panel — Dynamic login, embedded-wallet info, and the agent
@@ -52,7 +53,18 @@ export default function DevConsolePage() {
           </section>
         )}
 
-        {user && <Console />}
+        {user && (
+          <HandleGate>
+            {(ensName) => (
+              <>
+                <p className="text-xs text-zinc-500">
+                  dæmon: <span className="font-mono text-orange-300">{ensName}</span>
+                </p>
+                <Console />
+              </>
+            )}
+          </HandleGate>
+        )}
       </main>
     </div>
   );

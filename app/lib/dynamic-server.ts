@@ -13,6 +13,7 @@ import { ThresholdSignatureScheme } from "@dynamic-labs-wallet/node";
 import type { WalletClient } from "viem";
 import { CHAIN, CHAIN_ID, SEPOLIA_RPC_URL } from "./chain";
 import { getWallet, putWallet, type StoredWallet } from "./wallet-store";
+import { withLock } from "./lock";
 
 function requireEnv(name: string): string {
   const v = process.env[name];
@@ -70,12 +71,18 @@ export async function createAgentWallet(
   return record;
 }
 
-/** Get an agent's wallet by ENS-name key, creating it if it doesn't exist yet. Idempotent. */
-export async function ensureAgentWallet(
+/**
+ * Get an agent's wallet by ENS-name key, creating it if it doesn't exist yet. Idempotent and
+ * serialized per key, so two concurrent calls (double-clicked modal, two tabs) can't both mint
+ * a wallet for the same agent.
+ */
+export function ensureAgentWallet(
   ensName: string,
   opts: { parentEnsName?: string } = {},
 ): Promise<StoredWallet> {
-  return (await getWallet(ensName)) ?? (await createAgentWallet(ensName, opts));
+  return withLock(`wallet:${ensName}`, async () => {
+    return (await getWallet(ensName)) ?? (await createAgentWallet(ensName, opts));
+  });
 }
 
 /**

@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
-import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Flame } from '@/components/Flame';
 import { IdentityBadge } from '@/components/IdentityBadge';
 import { StatusPill } from '@/components/StatusPill';
@@ -9,11 +8,21 @@ import { MicButton } from '@/components/MicButton';
 import { QuickActions } from '@/components/QuickActions';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { STATE_META } from '@/lib/stateMeta';
+import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
+import { authHeaders } from "./lib/daemon-client";
+
+type HandleState =
+  | { status: "checking" }
+  | { status: "needs-handle" }
+  | { status: "ready"; ensName: string }
+  | { status: "error" };
+
 import { useFlameDaemon } from './lib/useFlameDaemon';
 import { useTts } from './lib/useTts';
 import { useMic } from './lib/useMic';
 import { useSpeakOnNewLine } from './lib/useSpeakOnNewLine';
 import { explorerTx } from './lib/chain';
+
 
 export default function Home() {
   const d = useFlameDaemon();

@@ -1,30 +1,23 @@
 /**
  * The action executor — the ONLY place agent intents turn into signed, broadcast
  * transactions. Reached exclusively from /api/daemon/execute after a human confirm.
- * B3/B4 extend the switch with register_subname and spawn_subagent.
+ * (Identity claiming is NOT here — it's auto-provisioned at handle pick, see provision.ts.)
  */
 import "server-only";
 import { erc20Abi, isAddress, parseUnits, type Address } from "viem";
 import { CHAIN, USDC, USDC_SEND_CAP, agentCardUri } from "./chain";
 import { publicClient } from "./evm";
 import { getSigner, createAgentWallet } from "./dynamic-server";
-import { ensureMinter, seedGasIfLow } from "./minter";
+import { seedGasIfLow } from "./minter";
 import { registerSubname as ensRegisterSubname, setAgentCardRecord } from "./ens";
 import { registerIdentity } from "./erc8004";
 import { getWallet, updateWallet } from "./wallet-store";
-import type {
-  ProposalCard,
-  ExecuteResponse,
-  RegisterSubnameDetails,
-  SpawnSubagentDetails,
-} from "./types";
+import type { ProposalCard, ExecuteResponse, SpawnSubagentDetails } from "./types";
 
 export async function executeProposal(card: ProposalCard): Promise<ExecuteResponse> {
   switch (card.details.action) {
     case "send_usdc":
       return sendUsdc(card.agent, card.details);
-    case "register_subname":
-      return claimIdentity(card.details);
     case "spawn_subagent":
       return spawnSubagent(card.details);
     default:
@@ -76,48 +69,6 @@ async function spawnSubagent(
     } catch {
       // Wallet + nested subname already exist; identity can be retried later.
     }
-
-    return { ok: true, hash };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-}
-
-/**
- * Claim an agent's onchain identity in one confirmed action: mint the ENS subname,
- * register the ERC-8004 NFT, set the agent-card text record, and persist the result.
- * Requires the signer to control the parent name and the owner agent to have gas.
- */
-async function claimIdentity(
-  details: RegisterSubnameDetails,
-): Promise<ExecuteResponse> {
-  const { name, ensLabel, parentName, ownerKey, signerKey } = details;
-  try {
-    const ownerWallet = await getWallet(ownerKey);
-    if (!ownerWallet) return { ok: false, error: `No wallet for "${ownerKey}"` };
-    const owner = ownerWallet.address as Address;
-
-    // The minter (approved ONCE on the parent) mints the root subname — no per-user approval.
-    await ensureMinter();
-
-    // 1. Mint the subname, owned by the user's Ignis, signed by the minter.
-    const { hash } = await ensRegisterSubname({
-      parentName,
-      label: ensLabel,
-      owner,
-      signerLabel: signerKey, // = the minter
-    });
-
-    // 2. Seed the user's Ignis a little gas from the minter so it can do the next two steps.
-    await seedGasIfLow(owner);
-
-    // 3. The user's Ignis registers its OWN ERC-8004 identity + sets its OWN text record.
-    const uri = agentCardUri(name);
-    const { agentId } = await registerIdentity({ agentURI: uri, signerLabel: ownerKey });
-    await setAgentCardRecord({ name, uri, signerLabel: ownerKey });
-
-    // 4. Persist the identity onto the wallet record.
-    await updateWallet(ownerKey, { agentId, agentCardUri: uri });
 
     return { ok: true, hash };
   } catch (err) {
