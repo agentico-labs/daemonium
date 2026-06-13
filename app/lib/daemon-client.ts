@@ -18,7 +18,7 @@ import type {
 } from "./types";
 
 /** Authorization header carrying the Dynamic session JWT, resolved at request time. */
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const token = getAuthToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }

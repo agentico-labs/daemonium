@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Flame } from '@/components/Flame';
 import { IdentityBadge } from '@/components/IdentityBadge';
 import { StatusPill } from '@/components/StatusPill';
@@ -9,13 +9,17 @@ import { QuickActions } from '@/components/QuickActions';
 import { useDaemon } from '@/lib/useDaemon';
 import { STATE_META } from '@/lib/stateMeta';
 import { DynamicWidget, useDynamicContext } from "@dynamic-labs/sdk-react-core";
-import { useAccount } from "wagmi";
-import { explorerAddress } from "./lib/chain";
+import { authHeaders } from "./lib/daemon-client";
 import { Console } from "./components/console";
+import { HandleModal } from "./components/handle-modal";
+
+type HandleState =
+  | { status: "checking" }
+  | { status: "needs-handle" }
+  | { status: "ready"; ensName: string }
+  | { status: "error" };
 
 export default function Home() {
-  const { user, primaryWallet } = useDynamicContext();
-  const { address, chainId, isConnected } = useAccount();
   const d = useDaemon();
   const shellRef = useRef<HTMLDivElement>(null);
 
@@ -24,6 +28,32 @@ export default function Home() {
   useEffect(() => {
     shellRef.current?.style.setProperty('--state', STATE_META[d.state].color);
   }, [d.state]);
+  const { user } = useDynamicContext();
+  const [state, setState] = useState<HandleState>({ status: "checking" });
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      setState({ status: "checking" });
+      try {
+        const res = await fetch("/api/daemon/handle", { headers: authHeaders() });
+        if (!res.ok) {
+          if (!cancelled) setState({ status: "error" });
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        setState(data.ensName ? { status: "ready", ensName: data.ensName } : { status: "needs-handle" });
+      } catch {
+        if (!cancelled) setState({ status: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, reloadKey]);
 
   return (
     <main
@@ -40,35 +70,42 @@ export default function Home() {
           <DynamicWidget />
         </header>
 
-        {!user ? (
+        {!user && (
           <p className="text-sm text-zinc-400">
             Sign in above to summon Ignis. Login provisions your embedded wallet
             on Sepolia.
           </p>
-        ) : (
-          <section className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm">
-            <Row label="User" value={user.email ?? user.userId ?? "—"} />
-            <Row
-              label="Embedded wallet"
-              value={primaryWallet?.address ?? "—"}
-              href={
-                primaryWallet?.address
-                  ? explorerAddress(primaryWallet.address)
-                  : undefined
-              }
-            />
-            <Row
-              label="wagmi useAccount"
-              value={
-                isConnected
-                  ? `${address ?? "—"} (chain ${chainId ?? "?"})`
-                  : "not connected"
-              }
-            />
-          </section>
         )}
 
-        {user && <Console />}
+        {user && state.status === "checking" && (
+          <p className="text-sm text-zinc-500">Checking your dæmon…</p>
+        )}
+
+        {user && state.status === "error" && (
+          <div className="flex flex-col items-start gap-2 text-sm">
+            <p className="text-red-400">Couldn&apos;t reach your dæmon.</p>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="rounded-md border border-zinc-700 px-3 py-1 text-zinc-300 hover:bg-zinc-800"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {user && state.status === "needs-handle" && (
+          <HandleModal onDone={(ensName) => setState({ status: "ready", ensName })} />
+        )}
+
+        {user && state.status === "ready" && (
+          <>
+            <section className="flex flex-col gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm">
+              <Row label="User" value={user.email ?? user.userId ?? "—"} />
+              <Row label="Your dæmon" value={state.ensName} />
+            </section>
+            <Console />
+          </>
+        )}
       </main>
     </div>
       {/* ambient room glow the whole UI picks up, tinted by the state color */}

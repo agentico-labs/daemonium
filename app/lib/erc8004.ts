@@ -8,17 +8,33 @@
  * source is not verified on Etherscan).
  */
 import "server-only";
-import { parseAbi, parseEventLogs, type Hash } from "viem";
+import { parseAbi, parseEventLogs, type Address, type Hash } from "viem";
 import { ERC8004 } from "./chain";
 import { publicClient } from "./evm";
 import { getSigner } from "./dynamic-server";
+
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 const identityRegistryAbi = parseAbi([
   "function register(string agentURI) returns (uint256 agentId)",
   "function setAgentURI(uint256 agentId, string newURI)",
   "function getAgentWallet(uint256 agentId) view returns (address)",
+  "function balanceOf(address owner) view returns (uint256)",
   "event Registered(uint256 indexed agentId, string agentURI, address indexed owner)",
+  // ERC-721 base event — the identity NFT is minted to the caller; tokenId == agentId.
+  "event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)",
 ]);
+
+/** Does `owner` already hold an ERC-8004 identity NFT? Guards against duplicate mints on retry. */
+export async function ownsIdentity(owner: Address): Promise<boolean> {
+  const balance = (await publicClient.readContract({
+    address: ERC8004.identityRegistry,
+    abi: identityRegistryAbi,
+    functionName: "balanceOf",
+    args: [owner],
+  })) as bigint;
+  return balance > BigInt(0);
+}
 
 /** Register a new ERC-8004 identity for `signerLabel`, pointing at `agentURI`. */
 export async function registerIdentity(opts: {
@@ -36,14 +52,24 @@ export async function registerIdentity(opts: {
   });
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
 
-  const events = parseEventLogs({
+  // Prefer the custom Registered event; fall back to the ERC-721 mint Transfer log so a
+  // mismatched/renamed event can't make us throw (and then re-mint a duplicate on retry).
+  const registered = parseEventLogs({
     abi: identityRegistryAbi,
     logs: receipt.logs,
     eventName: "Registered",
   });
-  const agentId = events[0]?.args.agentId;
+  let agentId = registered[0]?.args.agentId;
   if (agentId === undefined) {
-    throw new Error("register() succeeded but no Registered event was found");
+    const mints = parseEventLogs({
+      abi: identityRegistryAbi,
+      logs: receipt.logs,
+      eventName: "Transfer",
+    }).filter((l) => l.args.from === ZERO);
+    agentId = mints[0]?.args.tokenId;
+  }
+  if (agentId === undefined) {
+    throw new Error("register() mined but neither Registered nor a mint Transfer was found");
   }
   return { agentId: agentId.toString(), hash };
 }

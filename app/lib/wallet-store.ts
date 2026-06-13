@@ -10,6 +10,7 @@ import "server-only";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { WalletMetadata, ServerKeyShare } from "@dynamic-labs-wallet/node";
+import { withLock } from "./lock";
 
 export interface StoredWallet {
   label: string;
@@ -62,21 +63,27 @@ export async function listWallets(): Promise<StoredWallet[]> {
   return Object.values(await readStore());
 }
 
-export async function putWallet(w: StoredWallet): Promise<void> {
-  const store = await readStore();
-  store[w.label] = w;
-  await writeStore(store);
+export function putWallet(w: StoredWallet): Promise<void> {
+  // Serialized so concurrent writes to different keys don't clobber the whole file.
+  return withLock("wallets", async () => {
+    const store = await readStore();
+    store[w.label] = w;
+    await writeStore(store);
+  });
 }
 
-export async function updateWallet(
+export function updateWallet(
   label: string,
   patch: Partial<StoredWallet>,
 ): Promise<StoredWallet> {
-  const store = await readStore();
-  const existing = store[label];
-  if (!existing) throw new Error(`No wallet for label "${label}"`);
-  const next = { ...existing, ...patch };
-  store[label] = next;
-  await writeStore(store);
-  return next;
+  // Re-read INSIDE the lock so field merges (e.g. children append) can't lose updates.
+  return withLock("wallets", async () => {
+    const store = await readStore();
+    const existing = store[label];
+    if (!existing) throw new Error(`No wallet for label "${label}"`);
+    const next = { ...existing, ...patch };
+    store[label] = next;
+    await writeStore(store);
+    return next;
+  });
 }

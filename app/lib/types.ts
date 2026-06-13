@@ -18,8 +18,11 @@ export type DaemonState =
   | "success"
   | "error";
 
-/** The three state-changing actions, each gated by a human confirmation. */
-export type DaemonAction = "send_usdc" | "register_subname" | "spawn_subagent";
+/**
+ * State-changing actions, each gated by a human confirmation. (Identity claiming is no longer
+ * here — it's auto-provisioned at handle pick, see app/lib/provision.ts.)
+ */
+export type DaemonAction = "send_usdc" | "spawn_subagent";
 
 /** Per-action detail payloads shown on the confirm card (human-readable). */
 export interface SendUsdcDetails {
@@ -28,18 +31,6 @@ export interface SendUsdcDetails {
   amount: string;
   /** Optional resolved ENS name for `to`. */
   toEns?: string;
-}
-export interface RegisterSubnameDetails {
-  /** Full name being created/claimed, e.g. "ignis-a1b2.daemonium.eth". */
-  name: string;
-  /** Leftmost ENS label for setSubnodeRecord, e.g. "ignis-a1b2". */
-  ensLabel: string;
-  /** Parent name the subname nests under, e.g. "daemonium.eth". */
-  parentName: string;
-  /** Agent key (= ENS name) whose wallet owns the new name. */
-  ownerKey: string;
-  /** Agent key (= ENS name) whose wallet signs (must own/operate the parent). */
-  signerKey: string;
 }
 export interface SpawnSubagentDetails {
   /** Proposed sub-agent local label, e.g. "research". */
@@ -53,7 +44,6 @@ export interface SpawnSubagentDetails {
 
 export type ProposalDetails =
   | ({ action: "send_usdc" } & SendUsdcDetails)
-  | ({ action: "register_subname" } & RegisterSubnameDetails)
   | ({ action: "spawn_subagent" } & SpawnSubagentDetails);
 
 /** A pending action awaiting human confirmation. */

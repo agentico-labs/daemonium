@@ -14,9 +14,6 @@ import { normalize } from "viem/ens";
 import { publicClient, getIncomingUsdc } from "./evm";
 import { USDC } from "./chain";
 import { getWallet } from "./wallet-store";
-import { parentOf } from "./ens";
-import { leftLabel } from "./identity";
-import { MINTER_KEY } from "./minter";
 import { createExecution } from "./executions";
 import { runSubagent } from "./subagent";
 import type { DaemonEvent } from "./types";
@@ -144,42 +141,6 @@ export function buildTools({
             agent: selfKey,
             summary: `Send ${amount} USDC to ${toEns ?? resolved}`,
             details: { action: "send_usdc", to: resolved, amount, toEns },
-          },
-          userId,
-        );
-        emit({ type: "proposal", card });
-        return {
-          proposed: true,
-          executionId: card.executionId,
-          note: `Proposed: ${card.summary}. Awaiting the human's confirmation.`,
-        };
-      },
-    }),
-
-    register_subname: tool({
-      description:
-        "Propose claiming your onchain identity: mint your ENS subname, register your " +
-        "ERC-8004 card, and set the text record. Use this once to 'claim your name'. Does " +
-        "NOT execute until the human confirms.",
-      inputSchema: z.object({}),
-      execute: async () => {
-        const me = await getWallet(selfKey);
-        if (!me?.ensName) return { proposed: false, error: "You have no wallet/name yet" };
-        const card = createExecution(
-          {
-            action: "register_subname",
-            agent: selfKey,
-            summary: `Claim identity ${me.ensName} (ENS subname + ERC-8004 card)`,
-            details: {
-              action: "register_subname",
-              name: me.ensName,
-              ensLabel: leftLabel(me.ensName),
-              parentName: parentOf(me.ensName),
-              ownerKey: selfKey,
-              // The minter (approved once on the parent) mints the root subname — no per-user
-              // owner approval needed. Ignis still ends up OWNING the name.
-              signerKey: MINTER_KEY,
-            },
           },
           userId,
         );

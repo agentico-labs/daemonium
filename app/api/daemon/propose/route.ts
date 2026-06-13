@@ -7,7 +7,7 @@
  */
 import { createExecution } from "@/app/lib/executions";
 import { verifyUser, AuthError } from "@/app/lib/auth";
-import { rootEnsName } from "@/app/lib/identity";
+import { resolveUserKey } from "@/app/lib/handles";
 
 export const runtime = "nodejs";
 
@@ -26,10 +26,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "to and amount are required" }, { status: 400 });
   }
 
+  const agent = await resolveUserKey(userId);
+  if (!agent) {
+    return Response.json({ error: "Pick a handle first", needsHandle: true }, { status: 409 });
+  }
+
   const card = createExecution(
     {
       action: "send_usdc",
-      agent: rootEnsName(userId),
+      agent,
       summary: `Send ${amount} USDC to ${toEns ?? to}`,
       details: { action: "send_usdc", to, amount: String(amount), toEns },
     },

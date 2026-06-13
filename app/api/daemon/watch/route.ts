@@ -8,7 +8,7 @@
 import { getIncomingUsdc } from "@/app/lib/evm";
 import { getWallet } from "@/app/lib/wallet-store";
 import { verifyUser, AuthError } from "@/app/lib/auth";
-import { rootEnsName } from "@/app/lib/identity";
+import { resolveUserKey } from "@/app/lib/handles";
 
 export const runtime = "nodejs";
 
@@ -24,11 +24,21 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const subagent = url.searchParams.get("subagent");
   const sinceParam = url.searchParams.get("since");
-  const selfKey = rootEnsName(userId);
+  const selfKey = await resolveUserKey(userId);
+  if (!selfKey) {
+    return Response.json({ error: "Pick a handle first", needsHandle: true }, { status: 409 });
+  }
+  // Only allow a single-label direct child of the caller's own dæmon (no nested probing).
+  if (subagent && subagent.includes(".")) {
+    return Response.json({ error: "subagent must be a single label" }, { status: 400 });
+  }
   const key = subagent ? `${subagent}.${selfKey}` : selfKey;
 
   const wallet = await getWallet(key);
   if (!wallet) return Response.json({ error: `No agent "${key}"` }, { status: 404 });
+  if (subagent && wallet.parent !== selfKey) {
+    return Response.json({ error: "Not your sub-agent" }, { status: 403 });
+  }
 
   const since = sinceParam ? BigInt(sinceParam) : undefined;
   const { latestBlock, transfers } = await getIncomingUsdc(
