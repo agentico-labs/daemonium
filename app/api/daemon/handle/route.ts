@@ -8,6 +8,7 @@
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { getHandle, claimHandle, ensNameForHandle } from "@/app/lib/handles";
 import { provisionIdentity } from "@/app/lib/provision";
+import { getWallet } from "@/app/lib/wallet-store";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -28,9 +29,17 @@ export async function GET(req: Request) {
     return authFail(err);
   }
   const handle = await getHandle(userId);
+  if (!handle) {
+    return Response.json({ handle: null, ensName: null, identityComplete: false });
+  }
+  const ensName = ensNameForHandle(handle);
+  const wallet = await getWallet(ensName);
+  // identityComplete = the ERC-8004 step finished. If false, the client re-POSTs to finish
+  // provisioning (idempotent) — this self-heals accounts that half-provisioned.
   return Response.json({
-    handle: handle ?? null,
-    ensName: handle ? ensNameForHandle(handle) : null,
+    handle,
+    ensName,
+    identityComplete: Boolean(wallet?.agentId),
   });
 }
 
