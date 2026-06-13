@@ -24,12 +24,12 @@ export const STATE_META: Record<DaemonState, StateMeta> = {
 };
 
 /**
- * The six Ignis expressions. Each lives in its own folder under public/daemon/
+ * The five Ignis expressions. Each lives in its own folder under public/daemon/
  * as four 1024² transparent webp layers: full (flat composite), core (stable
  * body + face), tips (the licking flame that gets distorted), glow (soft aura).
  */
 export type ExpressionKey =
-  | 'idle' | 'listening' | 'thinking' | 'speaking' | 'happy' | 'concerned';
+  | 'idle' | 'listening' | 'thinking' | 'happy' | 'concerned';
 
 export interface ExpressionAssets {
   full: string;
@@ -47,12 +47,6 @@ export function expressionAssets(key: ExpressionKey): ExpressionAssets {
     glow: `${base}/glow.webp`,
   };
 }
-
-/** Shared helper textures. */
-export const FX = {
-  ember: '/daemon/fx/ember.webp',
-  noise: '/daemon/fx/noise.webp',
-} as const;
 
 /** Which expression each DaemonState wears. */
 export const STATE_EXPRESSION: Record<DaemonState, ExpressionKey> = {
