@@ -114,6 +114,9 @@ export function useVoice({
   const queueRef = useRef<QueueItem[]>([]);
   const playingRef = useRef(false);
   const turnRef = useRef(0);
+  // resolve() of the play promise currently awaiting a source — called on interrupt so the
+  // playLoop unwinds instead of hanging forever (which would pin its AudioBuffer).
+  const resolveCurrentRef = useRef<(() => void) | null>(null);
 
   // Segmentation cursor over the streaming text.
   const cursorRef = useRef(0);
@@ -122,7 +125,9 @@ export function useVoice({
 
   // Latest selected voice, read inside synthesize so changing it never re-creates callbacks.
   const voiceRef = useRef(voice);
-  voiceRef.current = voice;
+  useEffect(() => {
+    voiceRef.current = voice;
+  });
 
   /** Ensure ctx + analyser exist and the ctx is running. Returns null if unsupported. */
   const ensureContext = useCallback((): AudioContext | null => {
@@ -162,6 +167,11 @@ export function useVoice({
       }
       sourceRef.current = null;
     }
+    // Unblock a play awaiting this source so its playLoop unwinds (and exits on the turn
+    // check) instead of hanging forever and pinning the buffer.
+    const resolve = resolveCurrentRef.current;
+    resolveCurrentRef.current = null;
+    resolve?.();
   }, []);
 
   /** Synthesize one sentence to a decoded buffer. Null on any failure (caller falls back). */
@@ -204,8 +214,10 @@ export function useVoice({
       src.buffer = buffer;
       src.connect(analyser);
       sourceRef.current = src;
+      resolveCurrentRef.current = resolve;
       src.onended = () => {
         if (sourceRef.current === src) sourceRef.current = null;
+        if (resolveCurrentRef.current === resolve) resolveCurrentRef.current = null;
         resolve();
       };
       setIsSpeaking(true);
@@ -217,6 +229,7 @@ export function useVoice({
   const playLoop = useCallback(async () => {
     if (playingRef.current) return;
     playingRef.current = true;
+    const myTurn = turnRef.current;
     while (queueRef.current.length) {
       const item = queueRef.current.shift();
       if (!item) break;
@@ -226,7 +239,9 @@ export function useVoice({
       } catch {
         buffer = null;
       }
-      if (item.turn !== turnRef.current) continue; // a reset superseded this turn
+      // A reset (new turn / interrupt) superseded us — exit WITHOUT touching playingRef, which
+      // the newer playLoop now owns (a `continue` would race it draining the same queue).
+      if (turnRef.current !== myTurn) return;
 
       setCaption(item.display); // reveal in sync with the voice
       if (buffer) {
@@ -236,6 +251,7 @@ export function useVoice({
         const wait = Math.min(3500, Math.max(650, item.len * 38));
         await new Promise((r) => setTimeout(r, wait));
       }
+      if (turnRef.current !== myTurn) return; // interrupted during playback/wait
     }
     playingRef.current = false;
     setIsSpeaking(false);
