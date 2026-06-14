@@ -12,7 +12,7 @@ import { z } from "zod";
 import { erc20Abi, formatEther, formatUnits, isAddress, parseUnits, type Address } from "viem";
 import { normalize } from "viem/ens";
 import { identityClient, defiClient, getIncomingUsdc } from "./evm";
-import { USDC, USDC_MAINNET, SWAP_TOKENS, LIFI_VAULTS, LIFI_DEFAULT_VAULT } from "./chain";
+import { USDC, USDC_MAINNET, SWAP_TOKENS, LIFI_VAULTS, LIFI_DEFAULT_VAULT, NATIVE_SEND_CHAINS } from "./chain";
 import { getSwapQuote } from "./swap";
 import { composeSwapAndZap, bridgeQuote, BRIDGE_CHAINS, chainNameForId } from "./lifi";
 import { getWallet } from "./wallet-store";
@@ -164,13 +164,21 @@ export function buildTools({
 
     send_eth: tool({
       description:
-        "Propose sending native ETH from your wallet to an address or ENS name (for gas, or " +
-        "to fund another agent). This does NOT send — it asks the human to confirm.",
+        "Propose sending native ETH from your wallet on a chosen chain (for gas, or to fund " +
+        "another agent). Pick the chain where you actually hold the ETH — check get_balance first, " +
+        "since you may have ETH on Ethereum and/or Base. Does NOT send — it asks the human to confirm.",
       inputSchema: z.object({
         to: z.string().describe("Recipient: a 0x address or an ENS name"),
         amount: z.string().describe('ETH amount as a string, e.g. "0.01"'),
+        chain: z
+          .enum(["ethereum", "base"])
+          .describe("Which chain to send the ETH on — the one where you hold it"),
       }),
-      execute: async ({ to, amount }) => {
+      execute: async ({ to, amount, chain }) => {
+        const net = NATIVE_SEND_CHAINS[chain];
+        if (!net) {
+          return { proposed: false, error: `Supported chains: ${Object.keys(NATIVE_SEND_CHAINS).join(", ")}` };
+        }
         let resolved: string | null = isAddress(to) ? to : null;
         let toEns: string | undefined;
         if (!resolved) {
@@ -187,8 +195,8 @@ export function buildTools({
           {
             action: "send_eth",
             agent: selfKey,
-            summary: `Send ${amount} ETH to ${toEns ?? resolved}`,
-            details: { action: "send_eth", to: resolved, amount, toEns },
+            summary: `Send ${amount} ETH to ${toEns ?? resolved} on ${net.label}`,
+            details: { action: "send_eth", to: resolved, amount, toEns, chainId: net.chainId, chain: net.label },
           },
           userId,
         );

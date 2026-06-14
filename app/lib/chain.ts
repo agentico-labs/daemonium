@@ -85,6 +85,12 @@ export const ENS_PARENT_NAME = process.env.ENS_PARENT_NAME ?? "daemonium.eth";
 export const USDC_SEND_CAP = 25; // whole USDC
 export const ETH_SEND_CAP = 0.02; // ETH
 
+/** Chains the agent can send native ETH on (send_eth). The dæmon may hold ETH on either. */
+export const NATIVE_SEND_CHAINS: Record<string, { chainId: number; label: string }> = {
+  ethereum: { chainId: IDENTITY_CHAIN_ID, label: "Ethereum" },
+  base: { chainId: DEFI_CHAIN_ID, label: "Base" },
+};
+
 /* ───────────────────────── Dynamic Swap — Base mainnet ───────────────────────── */
 export const SWAP_API_BASE = "https://app.dynamicauth.com/api/v0";
 export const SWAP_CHAIN = DEFI_CHAIN;

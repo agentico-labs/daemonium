@@ -21,7 +21,9 @@ import {
   ETH_SEND_CAP,
   agentCardUri,
   ENS_ONCHAIN_MINTING,
+  IDENTITY_CHAIN,
   IDENTITY_CHAIN_ID,
+  IDENTITY_RPC_URL,
   DEFI_CHAIN,
   DEFI_CHAIN_ID,
   DEFI_RPC_URL,
@@ -31,7 +33,7 @@ import {
   LIFI_VAULTS,
   LIFI_CAP_USD,
 } from "./chain";
-import { defiClient } from "./evm";
+import { defiClient, identityClient } from "./evm";
 import { getSwapQuote } from "./swap";
 import { composeSwapAndZap, bridgeQuote } from "./lifi";
 import { getSigner, ensureAgentWallet } from "./dynamic-server";
@@ -48,13 +50,23 @@ import type {
   ProposalCard,
   ExecuteResponse,
   SpawnSubagentDetails,
+  SendEthDetails,
   SwapDetails,
   LifiZapDetails,
   LifiBridgeDetails,
 } from "./types";
 
-/** Signer options for the DeFi/value layer (Base mainnet — sends, swaps, LI.FI). */
+/** Signer options for the DeFi/value layer (Base mainnet — swaps, LI.FI, default sends). */
 const DEFI_SIGNER = { chain: DEFI_CHAIN, chainId: DEFI_CHAIN_ID, rpcUrl: DEFI_RPC_URL };
+/** Signer options for the identity layer (Ethereum mainnet). */
+const IDENTITY_SIGNER = { chain: IDENTITY_CHAIN, chainId: IDENTITY_CHAIN_ID, rpcUrl: IDENTITY_RPC_URL };
+
+/** Resolve a chainId to its signer opts, viem chain, and read client. null if unsupported. */
+function nativeChainCtx(chainId: number) {
+  if (chainId === DEFI_CHAIN_ID) return { signer: DEFI_SIGNER, chain: DEFI_CHAIN, pub: defiClient };
+  if (chainId === IDENTITY_CHAIN_ID) return { signer: IDENTITY_SIGNER, chain: IDENTITY_CHAIN, pub: identityClient };
+  return null;
+}
 
 /** viem chains the bridge executor can sign a SOURCE tx on (uses each chain's default RPC). */
 const BRIDGE_VIEM_CHAINS: Record<number, Chain> = {
@@ -79,8 +91,10 @@ function chainIdForAction(card: ProposalCard): number {
       return IDENTITY_CHAIN_ID; // ENS subname + ERC-8004 register live on Ethereum L1
     case "lifi_bridge":
       return card.details.fromChainId; // the source-chain tx we actually broadcast
+    case "send_eth":
+      return card.details.chainId; // send_eth runs on the chain the agent chose
     default:
-      return DEFI_CHAIN_ID; // send_usdc / send_eth / swap / lifi_zap all run on Base
+      return DEFI_CHAIN_ID; // send_usdc / swap / lifi_zap all run on Base
   }
 }
 
@@ -103,11 +117,9 @@ async function runAction(card: ProposalCard): Promise<ExecuteResponse> {
   }
 }
 
-/** Send native ETH from an agent's wallet on Base. The agent pays gas from the same balance. */
-async function sendEth(
-  agent: string,
-  details: { to: string; amount: string },
-): Promise<ExecuteResponse> {
+/** Send native ETH from an agent's wallet on the chosen chain (Ethereum L1 or Base). The agent
+ *  pays gas from the same balance on that chain. */
+async function sendEth(agent: string, details: SendEthDetails): Promise<ExecuteResponse> {
   if (!isAddress(details.to)) {
     return { ok: false, error: `Invalid recipient address: ${details.to}` };
   }
@@ -118,8 +130,10 @@ async function sendEth(
   if (amount > ETH_SEND_CAP) {
     return { ok: false, error: `Amount ${amount} exceeds the ${ETH_SEND_CAP} ETH cap` };
   }
+  const ctx = nativeChainCtx(details.chainId);
+  if (!ctx) return { ok: false, error: `Unsupported chain ${details.chainId} for ETH send` };
 
-  const signer = await getSigner(agent, DEFI_SIGNER);
+  const signer = await getSigner(agent, ctx.signer);
   const account = signer.account;
   if (!account) return { ok: false, error: "Agent wallet has no account" };
 
@@ -128,9 +142,9 @@ async function sendEth(
       to: details.to as Address,
       value: parseEther(details.amount),
       account,
-      chain: DEFI_CHAIN,
+      chain: ctx.chain,
     });
-    const receipt = await defiClient.waitForTransactionReceipt({ hash });
+    const receipt = await ctx.pub.waitForTransactionReceipt({ hash });
     return receipt.status === "success"
       ? { ok: true, hash }
       : { ok: false, hash, error: "Transaction reverted" };

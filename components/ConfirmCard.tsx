@@ -47,7 +47,7 @@ function flowFor(proposal: ProposalCard): Flow {
       return {
         from: { value: `${d.amount} ETH`, caption: 'leaves you' },
         to: { value: d.toEns ?? short(d.to), caption: 'recipient' },
-        note: 'on Base',
+        note: `on ${d.chain}`,
       };
     case 'swap':
       return {

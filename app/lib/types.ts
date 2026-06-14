@@ -45,6 +45,10 @@ export interface SendEthDetails {
   amount: string;
   /** Optional resolved ENS name for `to`. */
   toEns?: string;
+  /** Chain to send native ETH on (the dæmon may hold ETH on Ethereum and/or Base). */
+  chainId: number;
+  /** Display label for that chain, e.g. "Ethereum" or "Base". */
+  chain: string;
 }
 export interface SwapDetails {
   /** Token symbol the agent swaps FROM (e.g. "WETH"), on the swap chain. */
