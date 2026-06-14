@@ -69,14 +69,23 @@ export function useProactiveWatch(opts: {
         const data = (await res.json()) as WatchResponse;
 
         const baseline = cursorRef.current === null;
-        cursorRef.current = BigInt(data.latestBlock);
-
         const fresh = data.transfers.filter((t) => !seenRef.current.has(t.tx));
-        for (const t of fresh) seenRef.current.add(t.tx);
 
-        // First poll just records what's already there; react only to what lands afterwards.
-        if (baseline || fresh.length === 0 || pausedRef.current) return;
-        runRef.current(proactivePrompt(fresh));
+        // First poll only records what's already on-chain — never react to history.
+        if (baseline) {
+          cursorRef.current = BigInt(data.latestBlock);
+          for (const t of fresh) seenRef.current.add(t.tx);
+          return;
+        }
+
+        // If a turn/mic/speech/proposal began while we were fetching, leave the cursor and
+        // seen-set untouched so the next unpaused poll re-delivers — never consume-then-drop.
+        if (cancelled || pausedRef.current) return;
+
+        // Commit the cursor + mark seen only on the path that actually reacts.
+        cursorRef.current = BigInt(data.latestBlock);
+        for (const t of fresh) seenRef.current.add(t.tx);
+        if (fresh.length > 0) runRef.current(proactivePrompt(fresh));
       } catch {
         // Network blip — try again next tick.
       } finally {
