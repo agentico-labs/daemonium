@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+/* JetBrains Mono (loaded in app/layout via next/font) becomes the project's
+   monospace, so every `font-mono` utility — ENS handles, timers, counts —
+   renders in it, with graceful system fallbacks. */
+@theme {
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo,
+    Monaco, monospace;
+}
+
 /* ============================================================
    Daemonium — global styles (A0 skeleton)
    Near-black room. Ignis is the only light source. Every glow
@@ -149,6 +157,86 @@ body {
     opacity: 0;
   }
   to {
+    opacity: 1;
+  }
+}
+
+/* ---- Cluster screen + summon ritual ----
+   Namespaced so they never collide with the home flame's breathe/glow-pulse.
+   All ambient loops below are gated by the prefers-reduced-motion block. */
+@keyframes cluster-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+@keyframes cluster-breathe-s {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.07);
+  }
+}
+@keyframes cluster-halo {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.07);
+  }
+}
+@keyframes cluster-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes cluster-emptypulse {
+  0%,
+  100% {
+    border-color: rgba(255, 180, 100, 0.7);
+    box-shadow: 0 0 0 0 rgba(255, 150, 70, 0.35);
+  }
+  50% {
+    border-color: rgba(255, 200, 130, 0.9);
+    box-shadow: 0 0 14px 2px rgba(255, 150, 70, 0.25);
+  }
+}
+@keyframes cluster-seedflicker {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+@keyframes cluster-chev {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(4px);
+    opacity: 0.8;
+  }
+}
+@keyframes cluster-dots {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
     opacity: 1;
   }
 }

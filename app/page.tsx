@@ -9,7 +9,10 @@ import { IdentityPanel } from '@/components/IdentityPanel';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { Onboarding } from '@/components/Onboarding';
 import { VoicePicker } from '@/components/VoicePicker';
+import { Cluster } from '@/components/Cluster';
+import { SummonSheet } from '@/components/SummonSheet';
 import { STATE_META } from '@/lib/stateMeta';
+import { MOCK_DAEMONS, MOCK_SPELLS, rootLabelOf } from '@/lib/cluster';
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
 
 import { useFlameDaemon, type ChatMessage } from './lib/useFlameDaemon';
@@ -41,7 +44,10 @@ export default function Home() {
   const mic = useMic({ onTranscript: d.run, isSpeaking: voice.isSpeaking });
 
   const shellRef = useRef<HTMLDivElement>(null);
+  const pagerRef = useRef<HTMLDivElement>(null);
+  const clusterRef = useRef<HTMLElement>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [summonSlot, setSummonSlot] = useState<number | null>(null);
   const signedIn = !!user;
 
   // First-run gate: does this user have a fully provisioned dæmon yet?
@@ -106,95 +112,197 @@ export default function Home() {
     setShowAuthFlow(true);
   };
 
+  // The cluster (page 2) + summon ritual. Roster/spells are mock for now; the root label
+  // comes from the live identity, so roster handles and the summon suffix are real.
+  const rootLabel = rootLabelOf(onb.ensName);
+
+  const goToCluster = () =>
+    clusterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const goToHome = () => pagerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+
+  const openSummon = (slot: number) => {
+    voice.unlock();
+    setSummonSlot(slot);
+  };
+  const closeSummon = () => setSummonSlot(null);
+
+  // Kindle: route the new dæmon through Ignis as a real, confirm-gated spawn. The [summon]
+  // directive is filtered out of the visible chat (see useFlameDaemon). We let the "kindling"
+  // beat land, then drop back to Ignis so the human watches it think and the confirm card rise.
+  const handleKindle = ({ handle, purpose }: { handle: string; purpose: string }) => {
+    voice.unlock();
+    const p = purpose || 'general assistance in my cluster';
+    d.run(
+      `[summon] Summon a new dæmon in my cluster. Call the spawn_subagent tool now with label "${handle}" and this exact purpose: "${p}". Don't ask me to clarify — just propose it so I can confirm.`,
+    );
+    window.setTimeout(() => {
+      closeSummon();
+      goToHome();
+    }, 650);
+  };
+
   const showConfirmZone = !!d.proposal || !!d.txResult || !!mic.error;
 
   return (
     <main
       ref={shellRef}
-      className="relative mx-auto flex h-[100dvh] w-full max-w-[420px] flex-col items-center overflow-hidden pt-[env(safe-area-inset-top)]"
-      style={{
-        transition: '--state 600ms ease',
-        background:
-          'radial-gradient(94% 52% at 50% 18%, #100b07 0%, #060504 60%, #040303 100%)',
-      }}
+      className="relative mx-auto h-[100dvh] w-full max-w-[420px] overflow-hidden bg-[#050505]"
+      style={{ transition: '--state 600ms ease' }}
     >
-      {/* ambient ember glow the whole room picks up, warmed by the state color */}
+      {/* vertical pager — Home (page 1) over the Cluster (page 2), TikTok-style snap paging */}
       <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 z-0"
-        style={{
-          background:
-            'radial-gradient(110% 50% at 50% 16%, color-mix(in srgb, var(--state, #ff7a18) 15%, transparent), transparent 56%)',
-        }}
-      />
+        ref={pagerRef}
+        className="h-full overflow-y-auto"
+        style={{ scrollSnapType: 'y mandatory', overscrollBehaviorY: 'contain' }}
+      >
+        {/* page 1 — the voice room */}
+        <section
+          className="relative flex h-full w-full flex-col items-center overflow-hidden pt-[env(safe-area-inset-top)]"
+          style={{
+            scrollSnapAlign: 'start',
+            background:
+              'radial-gradient(94% 52% at 50% 18%, #100b07 0%, #060504 60%, #040303 100%)',
+          }}
+        >
+          {/* ambient ember glow the whole room picks up, warmed by the state color */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-0"
+            style={{
+              background:
+                'radial-gradient(110% 50% at 50% 16%, color-mix(in srgb, var(--state, #ff7a18) 15%, transparent), transparent 56%)',
+            }}
+          />
 
-      {/* ENS header + voice picker — only once provisioned */}
-      {ready && onb.ensName ? (
-        <div className="mt-3 flex flex-none flex-col items-center gap-2">
-          <ENSHeaderPill ensName={onb.ensName} onOpen={() => setPanelOpen(true)} />
-          <VoicePicker value={voiceId} onChange={setVoiceId} />
-        </div>
-      ) : null}
+          {/* ENS header + voice picker — only once provisioned */}
+          {ready && onb.ensName ? (
+            <div className="mt-3 flex flex-none flex-col items-center gap-2">
+              <ENSHeaderPill ensName={onb.ensName} onOpen={() => setPanelOpen(true)} />
+              <VoicePicker value={voiceId} onChange={setVoiceId} />
+            </div>
+          ) : null}
 
-      {/* the flame — the protagonist, present in every state */}
-      <div className="relative z-[2] -mt-1 flex flex-none items-center justify-center">
-        <Flame state={flameState} getAmplitude={voice.getAmplitude} />
+          {/* the flame — the protagonist, present in every state */}
+          <div className="relative z-[2] -mt-1 flex flex-none items-center justify-center">
+            <Flame state={flameState} getAmplitude={voice.getAmplitude} />
+          </div>
+
+          {/* the room between flame and control: the chat thread, or empty space */}
+          {ready ? <ChatThread messages={messages} /> : <div className="w-full flex-1" />}
+
+          {/* the human-confirm gate + last outcome + mic errors, just above the control */}
+          {showConfirmZone ? (
+            <div className="relative z-[2] flex w-full flex-none flex-col items-center gap-2 px-4 pb-2">
+              {d.proposal ? (
+                <ConfirmCard
+                  proposal={d.proposal}
+                  busy={d.busy}
+                  onConfirm={d.confirm}
+                  onDismiss={d.dismissProposal}
+                />
+              ) : null}
+              {d.txResult ? <TxLine result={d.txResult} /> : null}
+              {mic.error ? (
+                <span className="text-[12px] text-red-400/80">{mic.error}</span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* a faint hint that the cluster waits below (out of the way during a confirm) */}
+          {ready && !showConfirmZone ? <ClusterHint onClick={goToCluster} /> : null}
+
+          {/* the control: summon (logged out) → onboarding (no dæmon) → liquid sigil (ready) */}
+          {!signedIn ? (
+            <div className="flex w-full flex-none flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-3">
+              <SummonGate onSummon={handleSummon} />
+            </div>
+          ) : ready ? (
+            <LiquidSigil
+              listening={mic.recording}
+              busy={d.busy || mic.transcribing}
+              onTap={handleTap}
+              onSubmit={handleSubmit}
+            />
+          ) : (
+            <div className="flex w-full flex-none flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-3">
+              <Onboarding
+                status={onb.status}
+                error={onb.error}
+                reservedHandle={onb.reservedHandle}
+                activeHandle={onb.activeHandle}
+                onClaim={(h) => {
+                  voice.unlock();
+                  onb.claim(h);
+                }}
+                onRetry={onb.retry}
+              />
+            </div>
+          )}
+        </section>
+
+        {/* page 2 — the cluster (only once there's a dæmon to show) */}
+        {ready && onb.ensName ? (
+          <section
+            ref={clusterRef}
+            aria-label="Dæmon cluster"
+            className="relative h-full w-full overflow-hidden"
+            style={{ scrollSnapAlign: 'start' }}
+          >
+            <Cluster
+              rootLabel={rootLabel}
+              daemons={MOCK_DAEMONS}
+              spells={MOCK_SPELLS}
+              activeSlot={summonSlot}
+              onSlotTap={openSummon}
+            />
+          </section>
+        ) : null}
       </div>
 
-      {/* the room between flame and control: the chat thread, or empty space */}
-      {ready ? <ChatThread messages={messages} /> : <div className="w-full flex-1" />}
-
-      {/* the human-confirm gate + last outcome + mic errors, just above the control */}
-      {showConfirmZone ? (
-        <div className="relative z-[2] flex w-full flex-none flex-col items-center gap-2 px-4 pb-2">
-          {d.proposal ? (
-            <ConfirmCard
-              proposal={d.proposal}
-              busy={d.busy}
-              onConfirm={d.confirm}
-              onDismiss={d.dismissProposal}
-            />
-          ) : null}
-          {d.txResult ? <TxLine result={d.txResult} /> : null}
-          {mic.error ? (
-            <span className="text-[12px] text-red-400/80">{mic.error}</span>
-          ) : null}
-        </div>
+      {/* summon ritual — a sheet over the (dimmed) cluster */}
+      {summonSlot != null && onb.ensName ? (
+        <SummonSheet
+          rootEnsName={onb.ensName}
+          rootLabel={rootLabel}
+          takenLabels={MOCK_DAEMONS.map((dm) => dm.sub)}
+          onKindle={handleKindle}
+          onDismiss={closeSummon}
+        />
       ) : null}
 
-      {/* the control: summon (logged out) → onboarding (no dæmon) → liquid sigil (ready) */}
-      {!signedIn ? (
-        <div className="flex w-full flex-none flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-3">
-          <SummonGate onSummon={handleSummon} />
-        </div>
-      ) : ready ? (
-        <LiquidSigil
-          listening={mic.recording}
-          busy={d.busy || mic.transcribing}
-          onTap={handleTap}
-          onSubmit={handleSubmit}
-        />
-      ) : (
-        <div className="flex w-full flex-none flex-col items-center px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-3">
-          <Onboarding
-            status={onb.status}
-            error={onb.error}
-            reservedHandle={onb.reservedHandle}
-            activeHandle={onb.activeHandle}
-            onClaim={(h) => {
-              voice.unlock();
-              onb.claim(h);
-            }}
-            onRetry={onb.retry}
-          />
-        </div>
-      )}
-
-      {/* identity / cluster sheet */}
+      {/* identity / wallet sheet */}
       {panelOpen && onb.ensName ? (
         <IdentityPanel ensName={onb.ensName} onClose={() => setPanelOpen(false)} />
       ) : null}
     </main>
+  );
+}
+
+/** A faint, bobbing downward chevron on Home that reveals (and jumps to) the cluster below. */
+function ClusterHint({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Show cluster"
+      className="relative z-[2] flex flex-none flex-col items-center gap-0.5 pb-1 pt-1"
+      style={{ background: 'transparent', border: 'none', color: 'rgba(246,236,221,.4)' }}
+    >
+      <span className="text-[10px] uppercase tracking-[1.5px]">Cluster</span>
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ animation: 'cluster-chev 1.8s ease-in-out infinite' }}
+      >
+        <path d="M6 9l6 6 6-6" />
+      </svg>
+    </button>
   );
 }
 

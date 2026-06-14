@@ -1,10 +1,10 @@
 'use client';
 
 /**
- * Identity / cluster sheet — opens from the ENS pill. Minimal placeholder shell for now:
- * the full wallet + sub-agent + identity view is being redesigned into a tabbed layout,
- * and there's no client cluster endpoint yet. This gives the open/close interaction a real
- * home (scrim, slide-up, grabber, header, close) so it's ready to grow into.
+ * Identity / wallet sheet — opens from the ENS pill. Minimal placeholder shell for now:
+ * the full wallet + identity view is being redesigned into a tabbed layout. (The sub-agent
+ * cluster now lives on its own screen — swipe down from Home.) This gives the open/close
+ * interaction a real home (scrim, slide-up, grabber, header, close) so it's ready to grow into.
  */
 export function IdentityPanel({
   ensName,
@@ -69,7 +69,7 @@ export function IdentityPanel({
 
         <div className="flex flex-1 items-center justify-center px-[22px] pb-7 text-center">
           <p className="text-[13px] leading-relaxed text-[rgba(246,236,221,0.4)]">
-            Wallet, sub-agent cluster, and identity details land here next.
+            Wallet and identity details land here next.
           </p>
         </div>
       </div>

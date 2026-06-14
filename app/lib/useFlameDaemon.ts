@@ -53,8 +53,9 @@ function lastSpokenLine(
   return text || null;
 }
 
-/** Internal directive turns we inject (proactive nudges, post-confirm reactions) — kept out of the chat. */
-const INTERNAL_USER_PREFIXES = ['[ambient]', 'Confirmed.', 'I confirmed,'];
+/** Internal directive turns we inject (proactive nudges, post-confirm reactions, summon
+ * requests) — kept out of the visible chat. */
+const INTERNAL_USER_PREFIXES = ['[ambient]', '[summon]', 'Confirmed.', 'I confirmed,'];
 
 /** Flatten the ai-sdk messages into the chat thread, dropping empty + internal-directive turns. */
 function toThread(
