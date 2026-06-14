@@ -18,6 +18,8 @@ import {
 import { createOpenAI } from "@ai-sdk/openai";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { STT_MODEL, type SttResponse } from "@/app/lib/voice";
+import { withRoute } from "@/app/lib/observe";
+import { createLogger } from "@/app/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -25,7 +27,9 @@ export const maxDuration = 30;
 /** Reject anything implausibly large early (OpenAI caps uploads at 25 MB anyway). */
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
-export async function POST(req: Request) {
+export const POST = withRoute("stt", postHandler);
+
+async function postHandler(req: Request) {
   // Same security boundary as the other wallet-adjacent routes: only an
   // authenticated user can spend our transcription budget.
   try {
@@ -92,7 +96,7 @@ export async function POST(req: Request) {
       const body: SttResponse = { text: "" };
       return Response.json(body);
     }
-    console.error("stt transcription failed", err);
+    createLogger("stt").error("transcription failed", err);
     return Response.json(
       { error: "Transcription failed" },
       { status: 502 },

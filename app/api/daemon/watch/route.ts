@@ -9,10 +9,13 @@ import { getIncomingUsdc } from "@/app/lib/evm";
 import { getWallet } from "@/app/lib/wallet-store";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { resolveUserKey } from "@/app/lib/handles";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+export const GET = withRoute("watch", getHandler);
+
+async function getHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await verifyUser(req));

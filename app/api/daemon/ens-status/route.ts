@@ -12,10 +12,13 @@ import { ensureMinter } from "@/app/lib/minter";
 import { publicClient } from "@/app/lib/evm";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { resolveUserKey } from "@/app/lib/handles";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+export const GET = withRoute("ens-status", getHandler);
+
+async function getHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await verifyUser(req));

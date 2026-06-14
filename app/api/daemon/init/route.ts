@@ -10,10 +10,13 @@ import { publicClient } from "@/app/lib/evm";
 import { USDC, explorerAddress } from "@/app/lib/chain";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { resolveUserKey } from "@/app/lib/handles";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export const POST = withRoute("init", postHandler);
+
+async function postHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await verifyUser(req));

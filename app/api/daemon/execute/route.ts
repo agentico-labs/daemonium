@@ -9,10 +9,13 @@ import { takeExecution } from "@/app/lib/executions";
 import { executeProposal } from "@/app/lib/actions";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import type { ExecuteRequest } from "@/app/lib/types";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
+export const POST = withRoute("execute", postHandler);
+
+async function postHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await verifyUser(req));

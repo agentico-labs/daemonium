@@ -9,6 +9,7 @@ import { verifyUser, AuthError } from "@/app/lib/auth";
 import { getHandle, claimHandle, ensNameForHandle } from "@/app/lib/handles";
 import { provisionIdentity } from "@/app/lib/provision";
 import { getWallet } from "@/app/lib/wallet-store";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -21,7 +22,9 @@ function authFail(err: unknown) {
   return Response.json({ error: err instanceof Error ? err.message : "Unauthorized" }, { status });
 }
 
-export async function GET(req: Request) {
+export const GET = withRoute("handle", getHandler);
+
+async function getHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await user(req));
@@ -43,7 +46,9 @@ export async function GET(req: Request) {
   });
 }
 
-export async function POST(req: Request) {
+export const POST = withRoute("handle", postHandler);
+
+async function postHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await user(req));

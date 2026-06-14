@@ -6,10 +6,13 @@
 import { NextResponse } from "next/server";
 import { getWallet } from "@/app/lib/wallet-store";
 import { buildAgentCard } from "@/app/lib/agent-card";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 
-export async function GET(
+export const GET = withRoute("agent-card", getHandler);
+
+async function getHandler(
   _req: Request,
   { params }: { params: Promise<{ label: string }> },
 ) {

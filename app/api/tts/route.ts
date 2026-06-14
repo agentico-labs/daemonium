@@ -12,6 +12,7 @@
  * buffering the whole clip. The API key stays server-side; the browser never sees it.
  */
 import type { TtsRequest } from "@/app/lib/types";
+import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -30,7 +31,9 @@ const VOICE_INSTRUCTIONS =
 /** Guard against accidental huge bills / latency from a runaway prompt. */
 const MAX_TEXT_LENGTH = 4096;
 
-export async function POST(req: Request): Promise<Response> {
+export const POST = withRoute("tts", postHandler);
+
+async function postHandler(req: Request): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     // Don't crash the app if the key is absent — fail clearly and let the client

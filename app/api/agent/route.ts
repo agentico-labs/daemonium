@@ -18,9 +18,13 @@ import { AGENT_MODEL } from "@/app/lib/chain";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import { resolveUserKey } from "@/app/lib/handles";
 import { ensureAgentWallet } from "@/app/lib/dynamic-server";
+import { withRoute } from "@/app/lib/observe";
+import { createLogger } from "@/app/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const log = createLogger("agent");
 
 const SYSTEM = `You are Ignis, a living flame dæmon — a digital creature that lives on the
 user's screen and acts on their behalf onchain. You control your OWN wallet on the Sepolia
@@ -42,7 +46,9 @@ Be decisive: resolve recipients before proposing a payment, and call each propos
 once. Never invent addresses, balances, or results — always use a tool. If something fails,
 say so plainly.`;
 
-export async function POST(req: Request) {
+export const POST = withRoute("agent", postHandler);
+
+async function postHandler(req: Request) {
   let userId: string;
   try {
     ({ userId } = await verifyUser(req));
@@ -77,12 +83,18 @@ export async function POST(req: Request) {
           emit({ type: "state", state: "idle" });
           emit({ type: "done" });
         },
-        onError: () => emit({ type: "state", state: "error" }),
+        onError: ({ error }) => {
+          log.error("streamText error", error);
+          emit({ type: "state", state: "error" });
+        },
       });
 
       writer.merge(result.toUIMessageStream());
     },
-    onError: (err) => (err instanceof Error ? err.message : String(err)),
+    onError: (err) => {
+      log.error("stream error", err);
+      return err instanceof Error ? err.message : String(err);
+    },
   });
 
   return createUIMessageStreamResponse({ stream });
