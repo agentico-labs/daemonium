@@ -2,11 +2,15 @@ import { FRAG_SRC, VERT_SRC } from './shaders';
 
 type GL = WebGLRenderingContext;
 
-/** The three layer image URLs for one expression. */
+/** The layer image URLs for one expression (core has cel frames for the face). */
 export interface FlameLayers {
   core: string;
   tips: string;
   glow: string;
+  /** Eyes-closed blink frame for the core (calm + concerned moods). */
+  coreBlink?: string;
+  /** Mouth-open talk frame; the live voice amplitude blends core→coreTalk. */
+  coreTalk?: string;
 }
 
 /** What the component pushes when the state (or a debug slider) changes. */
@@ -60,6 +64,9 @@ const PASSES: PassConfig[] = [
   { name: 'core', distortMul: 0.0,  tint: 0.0, whitehot: 0.0, depth: 0.60, ember: false, additive: false },
   { name: 'tips', distortMul: 1.0,  tint: 1.0, whitehot: 0.4, depth: 1.0,  ember: true,  additive: false },
 ];
+
+// One full eyes-close→open blink, in seconds.
+const BLINK_DUR = 0.16;
 
 function compile(gl: GL, type: number, src: string): WebGLShader | null {
   const s = gl.createShader(type);
@@ -173,6 +180,13 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
   function texOf(src: string): WebGLTexture | null {
     return textures.get(src) ?? placeholder;
   }
+  function loadLayers(l: FlameLayers) {
+    load(l.glow);
+    load(l.core);
+    load(l.tips);
+    if (l.coreBlink) load(l.coreBlink);
+    if (l.coreTalk) load(l.coreTalk);
+  }
 
   const cur: Live = {
     distort: 0.085, turbulence: 0.6, ember: 0.2, brightness: 1,
@@ -182,6 +196,8 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
 
   const base = (e: string): FlameLayers => ({
     core: `/daemon/${e}/core.webp`,
+    coreBlink: `/daemon/${e}/core-blink.webp`,
+    coreTalk: `/daemon/${e}/core-talk.webp`,
     tips: `/daemon/${e}/tips.webp`,
     glow: `/daemon/${e}/glow.webp`,
   });
@@ -199,8 +215,12 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
   let offY = 0;
   let voice = 0;       // smoothed voice amplitude actually applied
   let voiceTarget = 0; // latest amplitude pushed from the TTS analyser
+  let blinkActive = false; // a blink is currently playing
+  let blinkT = 0;          // seconds into the current blink
+  let nextBlink = 3;       // seconds until the next blink
+  let blinkMix = 0;        // 0..1 core→coreBlink
 
-  (['glow', 'core', 'tips'] as LayerName[]).forEach((k) => load(curL[k]));
+  loadLayers(curL);
 
   function setTargets(t: FlameTargets) {
     tgt.distort = t.distort;
@@ -215,7 +235,7 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
 
     const showing = crossfading ? nextL.core : curL.core;
     if (t.layers.core !== showing) {
-      (['glow', 'core', 'tips'] as LayerName[]).forEach((k) => load(t.layers[k]));
+      loadLayers(t.layers);
       if (crossfading) curL = nextL;
       nextL = t.layers;
       mix = 0;
@@ -260,6 +280,29 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
       if (mix >= 1) { mix = 1; crossfading = false; curL = nextL; }
     }
 
+    // Mouth: louder voice opens the core toward its talk frame.
+    const mouthMix = Math.min(1, voice * 1.4);
+
+    // Blink: flash the eyes-closed frame every few seconds, but only when the
+    // mouth is near-closed (there's no eyes-closed + mouth-open frame to mix).
+    const canBlink = !crossfading && !!curL.coreBlink;
+    if (canBlink && blinkActive) {
+      blinkT += dt;
+      const half = BLINK_DUR * 0.5;
+      blinkMix = blinkT < half ? blinkT / half : Math.max(0, 1 - (blinkT - half) / half);
+      if (blinkT >= BLINK_DUR) {
+        blinkActive = false;
+        blinkMix = 0;
+        nextBlink = 2.5 + Math.random() * 3.5;
+      }
+    } else if (canBlink) {
+      nextBlink -= dt;
+      if (nextBlink <= 0 && voice < 0.18) { blinkActive = true; blinkT = 0; }
+    } else {
+      blinkActive = false;
+      blinkMix = 0;
+    }
+
     phase += dt * cur.breathSpeed * Math.PI * 2 * motion;
     const breath = 1 + Math.sin(phase) * cur.breathAmp + voice * 0.02;
 
@@ -280,8 +323,9 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
     gl.uniform1f(U.brightness, cur.brightness * (1 + voice * 0.6));
     gl.uniform1f(U.breath, breath);
     gl.uniform1f(U.motion, motion);
-    gl.uniform1f(U.texMix, crossfading ? mix : 0);
 
+    const blinkSrc = curL.coreBlink;
+    const talkSrc = curL.coreTalk;
     for (let i = 0; i < PASSES.length; i++) {
       const p = PASSES[i];
       gl.blendFunc(gl.ONE, p.additive ? gl.ONE : gl.ONE_MINUS_SRC_ALPHA);
@@ -293,11 +337,27 @@ export function createFlameRenderer(canvas: HTMLCanvasElement): FlameRenderer | 
       gl.uniform1f(U.opacity, p.name === 'glow' ? Math.min(1, glowOpacity + voice * 0.45) : 1);
       gl.uniform2f(U.offset, offX * p.depth, offY * p.depth);
 
+      // Per-pass crossfade: glow/tips only swap expressions; the core also
+      // blinks and lip-syncs, so it picks its own second frame + mix.
+      const srcA = curL[p.name];
+      let srcB = crossfading ? nextL[p.name] : curL[p.name];
+      let passMix = crossfading ? mix : 0;
+      if (p.name === 'core' && !crossfading) {
+        if (blinkActive && blinkSrc) {
+          srcB = blinkSrc;
+          passMix = blinkMix;
+        } else if (talkSrc) {
+          srcB = talkSrc;
+          passMix = mouthMix;
+        }
+      }
+      gl.uniform1f(U.texMix, passMix);
+
       gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, texOf(curL[p.name]));
+      gl.bindTexture(gl.TEXTURE_2D, texOf(srcA));
       gl.uniform1i(U.tex, 0);
       gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, texOf(crossfading ? nextL[p.name] : curL[p.name]));
+      gl.bindTexture(gl.TEXTURE_2D, texOf(srcB));
       gl.uniform1i(U.texNext, 1);
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);

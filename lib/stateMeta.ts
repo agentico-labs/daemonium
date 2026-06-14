@@ -24,48 +24,62 @@ export const STATE_META: Record<DaemonState, StateMeta> = {
 };
 
 /**
- * The five Ignis expressions. Each lives in its own folder under public/daemon/
- * as four 1024² transparent webp layers: full (flat composite), core (stable
- * body + face), tips (the licking flame that gets distorted), glow (soft aura).
+ * Ignis wears three moods, each its own folder under public/daemon/. State
+ * identity comes from the color (--state) + per-state motion params, so several
+ * states share one mood: calm (the idle folder) covers idle / listening /
+ * thinking / delegating / executing, happy = success, concerned = error.
+ *
+ * Each mood folder holds the layered webp art (1024², straight alpha): full
+ * (flat fallback composite), core (the stable face/body), tips (the licking
+ * flame that gets distorted), glow (soft aura). The core also carries the cel
+ * frames that make the face move: core-talk (mouth open) for every mood, and
+ * core-blink (eyes closed) for the moods whose neutral has open eyes.
  */
-export type ExpressionKey =
-  | 'idle' | 'listening' | 'thinking' | 'happy' | 'concerned';
+export type ExpressionKey = 'idle' | 'happy' | 'concerned';
+
+/** Moods whose neutral face has open eyes, so an eyes-closed blink frame fits. */
+const MOODS_WITH_BLINK = new Set<ExpressionKey>(['idle', 'concerned']);
 
 export interface ExpressionAssets {
   full: string;
   core: string;
+  coreTalk: string;
+  coreBlink?: string;
   tips: string;
   glow: string;
 }
 
 export function expressionAssets(key: ExpressionKey): ExpressionAssets {
   const base = `/daemon/${key}`;
-  return {
+  const assets: ExpressionAssets = {
     full: `${base}/full.webp`,
     core: `${base}/core.webp`,
+    coreTalk: `${base}/core-talk.webp`,
     tips: `${base}/tips.webp`,
     glow: `${base}/glow.webp`,
   };
+  if (MOODS_WITH_BLINK.has(key)) assets.coreBlink = `${base}/core-blink.webp`;
+  return assets;
 }
 
-/** Which expression each DaemonState wears. */
+/** Which mood each DaemonState wears. */
 export const STATE_EXPRESSION: Record<DaemonState, ExpressionKey> = {
   idle: 'idle',
-  listening: 'listening',
-  thinking: 'thinking',
-  delegating: 'thinking',
-  executing: 'thinking',
+  listening: 'idle',
+  thinking: 'idle',
+  delegating: 'idle',
+  executing: 'idle',
   success: 'happy',
   error: 'concerned',
 };
 
-/** State → flat composite URL (the PNG fallback + the renderer's base texture). */
+/** State → flat composite URL (the no-WebGL fallback image). */
 export const STATE_IMAGE: Record<DaemonState, string> = {
   idle: expressionAssets('idle').full,
-  listening: expressionAssets('listening').full,
-  thinking: expressionAssets('thinking').full,
-  delegating: expressionAssets('thinking').full,
-  executing: expressionAssets('thinking').full,
+  listening: expressionAssets('idle').full,
+  thinking: expressionAssets('idle').full,
+  delegating: expressionAssets('idle').full,
+  executing: expressionAssets('idle').full,
   success: expressionAssets('happy').full,
   error: expressionAssets('concerned').full,
 };
