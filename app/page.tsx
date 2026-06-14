@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Flame } from '@/components/Flame';
 import { ENSHeaderPill } from '@/components/ENSHeaderPill';
 import { ChatThread } from '@/components/ChatThread';
@@ -24,12 +24,13 @@ export default function Home() {
   const d = useFlameDaemon();
   const { user, setShowAuthFlow } = useDynamicContext();
 
-  // Selected character voice (persisted), fed to the voice pipeline.
-  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
-  useEffect(() => {
-    const saved = localStorage.getItem('ignis.voice');
-    if (saved) setVoiceId(saved);
-  }, []);
+  // Selected character voice (persisted), fed to the voice pipeline. Hydrated from storage in
+  // the initializer (the picker is client-only, so there's no SSR mismatch).
+  const [voiceId, setVoiceId] = useState(() =>
+    typeof window === 'undefined'
+      ? DEFAULT_VOICE_ID
+      : (localStorage.getItem('ignis.voice') ?? DEFAULT_VOICE_ID),
+  );
   useEffect(() => {
     localStorage.setItem('ignis.voice', voiceId);
   }, [voiceId]);
@@ -88,23 +89,22 @@ export default function Home() {
     return d.messages;
   }, [d.messages, d.caption, voice.caption, d.busy, voice.isSpeaking]);
 
-  const handleTap = useCallback(() => {
+  // Trivial tap handlers — not memoized: their children aren't memo'd, so a stable identity
+  // buys nothing, and a fresh closure each render avoids stale-value footguns.
+  const handleTap = () => {
     voice.unlock();
     mic.toggle();
-  }, [voice.unlock, mic.toggle]);
+  };
 
-  const handleSubmit = useCallback(
-    (text: string) => {
-      voice.unlock();
-      d.run(text);
-    },
-    [voice.unlock, d.run],
-  );
+  const handleSubmit = (text: string) => {
+    voice.unlock();
+    d.run(text);
+  };
 
-  const handleSummon = useCallback(() => {
+  const handleSummon = () => {
     voice.unlock();
     setShowAuthFlow(true);
-  }, [voice.unlock, setShowAuthFlow]);
+  };
 
   const showConfirmZone = !!d.proposal || !!d.txResult || !!mic.error;
 
