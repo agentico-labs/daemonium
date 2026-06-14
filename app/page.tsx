@@ -16,6 +16,7 @@ import { useTts } from './lib/useTts';
 import { useMic } from './lib/useMic';
 import { useSpeakOnNewLine } from './lib/useSpeakOnNewLine';
 import { useOnboarding } from './lib/useOnboarding';
+import { useProactiveWatch } from './lib/useProactiveWatch';
 import { explorerTx } from './lib/chain';
 
 
@@ -33,6 +34,14 @@ export default function Home() {
 
   // First-run gate: does this user have a fully provisioned dæmon yet?
   const onb = useOnboarding(signedIn);
+
+  // The proactive moment: once provisioned, Ignis watches its wallet and speaks up on its own
+  // when funds arrive — held back while a turn, the mic, speech, or a proposal is in flight.
+  useProactiveWatch({
+    enabled: signedIn && onb.status === 'ready',
+    paused: d.busy || mic.recording || tts.isSpeaking || !!d.proposal,
+    run: d.run,
+  });
 
   // The flame leads the onboarding: it "thinks" while the dæmon is being minted,
   // and the real mic drives the `listening` overlay on an otherwise-idle flame.
