@@ -11,6 +11,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { getAuthToken } from "@dynamic-labs/sdk-react-core";
 import type {
+  DaemonAction,
   DaemonEvent,
   DaemonState,
   ProposalCard,
@@ -29,6 +30,15 @@ export function useDaemon() {
   const [txResult, setTxResult] = useState<
     (ExecuteResponse & { executionId: string }) | null
   >(null);
+  // While a confirmed action is signing+broadcasting (the `executing` await), the proposal card
+  // is gone and the outcome isn't in yet — so the only thing on screen would be the flame. We
+  // remember WHICH action is in flight so the confirm zone can show an honest "Sending USDC…"
+  // working line through the wait. Null when nothing is executing.
+  const [executingAction, setExecutingAction] = useState<DaemonAction | null>(null);
+  // Latest proposal, mirrored into a ref so confirm() (a stable callback) can read which action
+  // it is confirming without re-creating itself on every proposal change.
+  const proposalRef = useRef<ProposalCard | null>(null);
+  proposalRef.current = proposal;
   // After a confirmed action, hold the success/error face through Ignis's spoken
   // reaction so that follow-up turn doesn't snap the flame back to "thinking".
   const reacting = useRef(false);
@@ -73,6 +83,7 @@ export function useDaemon() {
 
   const confirm = useCallback(
     async (executionId: string) => {
+      setExecutingAction(proposalRef.current?.action ?? null);
       setProposal(null);
       setState("executing");
       try {
@@ -97,6 +108,8 @@ export function useDaemon() {
           executionId,
           error: err instanceof Error ? err.message : String(err),
         });
+      } finally {
+        setExecutingAction(null); // wait's over — the outcome (txResult) takes the stage
       }
     },
     [sendMessage],
@@ -110,6 +123,7 @@ export function useDaemon() {
     state,
     proposal,
     txResult,
+    executingAction,
     sendPrompt,
     confirm,
     dismissProposal,

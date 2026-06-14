@@ -12,6 +12,10 @@ import type { ExecuteRequest } from "@/app/lib/types";
 import { withRoute } from "@/app/lib/observe";
 
 export const runtime = "nodejs";
+// Signing can be slow: a swap/zap/bridge does an approval tx + the action tx, each waiting on a
+// receipt, so the whole confirm can run tens of seconds. Give it room — a too-short platform
+// timeout would kill the request and snap the flame to `error` even when the tx actually landed.
+export const maxDuration = 120;
 
 export const POST = withRoute("execute", postHandler);
 

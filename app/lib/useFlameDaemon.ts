@@ -11,7 +11,7 @@
  * here — this adapter is purely the agent side.
  */
 import { useDaemon } from './daemon-client';
-import type { DaemonState, ProposalCard, ExecuteResponse } from './types';
+import type { DaemonAction, DaemonState, ProposalCard, ExecuteResponse } from './types';
 
 export interface ChatMessage {
   role: 'user' | 'ignis';
@@ -31,6 +31,8 @@ export interface FlameDaemon {
   run: (text: string) => void;
   /** Pending action awaiting the human confirm tap, or null. */
   proposal: ProposalCard | null;
+  /** The action currently signing+broadcasting (the `executing` wait), or null. */
+  executingAction: DaemonAction | null;
   /** Outcome of the last confirmed action, or null. */
   txResult: (ExecuteResponse & { executionId: string }) | null;
   /** Confirm a proposal — sends only the opaque executionId to the signer route. */
@@ -82,6 +84,7 @@ export function useFlameDaemon(): FlameDaemon {
     state,
     proposal,
     txResult,
+    executingAction,
     sendPrompt,
     confirm,
     dismissProposal,
@@ -98,6 +101,7 @@ export function useFlameDaemon(): FlameDaemon {
     busy,
     run: sendPrompt,
     proposal,
+    executingAction,
     txResult,
     confirm,
     dismissProposal,
