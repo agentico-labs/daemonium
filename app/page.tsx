@@ -8,25 +8,35 @@ import { MicButton } from '@/components/MicButton';
 import { QuickActions } from '@/components/QuickActions';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { Onboarding } from '@/components/Onboarding';
+import { VoicePicker } from '@/components/VoicePicker';
 import { STATE_META } from '@/lib/stateMeta';
 import { useDynamicContext } from "@dynamic-labs/sdk-react-core";
 
 import { useFlameDaemon } from './lib/useFlameDaemon';
-import { useTts } from './lib/useTts';
+import { useVoice } from './lib/useVoice';
 import { useMic } from './lib/useMic';
-import { useSpeakOnNewLine } from './lib/useSpeakOnNewLine';
 import { useOnboarding } from './lib/useOnboarding';
 import { explorerTx } from './lib/chain';
+import { DEFAULT_VOICE_ID } from './lib/voices';
 
 
 export default function Home() {
   const d = useFlameDaemon();
   const { user, setShowAuthFlow } = useDynamicContext();
-  const tts = useTts();
-  const mic = useMic({ onTranscript: d.run, isSpeaking: tts.isSpeaking });
-
-  // Speak each finished assistant line aloud (once it's final, not the partial stream).
-  useSpeakOnNewLine(d.caption, d.busy, tts.speak);
+  // Which character voice Ignis speaks in, persisted across sessions. Read from storage after
+  // mount (not in the initializer) so server and first client render match — no hydration flash.
+  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
+  useEffect(() => {
+    const saved = localStorage.getItem('ignis.voice');
+    if (saved) setVoiceId(saved);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('ignis.voice', voiceId);
+  }, [voiceId]);
+  // Voice owns both the speech and the caption: it segments Ignis's streaming line into
+  // sentences, speaks each as soon as it's ready, and reveals the text in sync with the audio.
+  const voice = useVoice({ text: d.caption, busy: d.busy, voice: voiceId });
+  const mic = useMic({ onTranscript: d.run, isSpeaking: voice.isSpeaking });
 
   const shellRef = useRef<HTMLDivElement>(null);
   const signedIn = !!user;
@@ -34,14 +44,19 @@ export default function Home() {
   // First-run gate: does this user have a fully provisioned dæmon yet?
   const onb = useOnboarding(signedIn);
 
-  // The flame leads the onboarding: it "thinks" while the dæmon is being minted,
-  // and the real mic drives the `listening` overlay on an otherwise-idle flame.
+  // The flame leads the onboarding: it "thinks" while the dæmon is being minted, the real mic
+  // drives the `listening` overlay, and we cover the STT gap (audio stopped, transcript not
+  // back yet) with `thinking` so the flame is never idle while a request is on its way.
   const flameState =
     onb.status === 'summoning'
       ? 'thinking'
-      : mic.recording && d.state === 'idle'
-        ? 'listening'
-        : d.state;
+      : d.state !== 'idle'
+        ? d.state
+        : mic.recording
+          ? 'listening'
+          : mic.transcribing
+            ? 'thinking'
+            : d.state;
 
   // Publish the live state color to CSS. Every glow reads var(--state); because
   // --state is a registered @property <color>, the whole room cross-fades.
@@ -51,22 +66,22 @@ export default function Home() {
 
   // Every tap is a chance to arm the iOS AudioContext (must happen in a gesture).
   const handleMic = useCallback(() => {
-    tts.unlock();
+    voice.unlock();
     mic.toggle();
-  }, [tts.unlock, mic.toggle]);
+  }, [voice.unlock, mic.toggle]);
 
   const handlePick = useCallback(
     (text: string) => {
-      tts.unlock();
+      voice.unlock();
       d.run(text);
     },
-    [tts.unlock, d.run],
+    [voice.unlock, d.run],
   );
 
   const handleSummon = useCallback(() => {
-    tts.unlock();
+    voice.unlock();
     setShowAuthFlow(true);
-  }, [tts.unlock, setShowAuthFlow]);
+  }, [voice.unlock, setShowAuthFlow]);
 
   return (
     <main
@@ -84,9 +99,14 @@ export default function Home() {
         }}
       />
 
+      {/* voice picker — switch Ignis's character voice (with a one-tap preview) */}
+      <div className="absolute right-4 top-[max(0.75rem,env(safe-area-inset-top))] z-20">
+        <VoicePicker value={voiceId} onChange={setVoiceId} />
+      </div>
+
       {/* upper third — flame, identity, status */}
       <section className="flex flex-1 flex-col items-center justify-center gap-6">
-        <Flame state={flameState} getAmplitude={tts.getAmplitude} />
+        <Flame state={flameState} getAmplitude={voice.getAmplitude} />
         <div className="flex flex-col items-center gap-3">
           <IdentityBadge ensName={onb.ensName} />
           <StatusPill state={flameState} label={d.label} />
@@ -104,9 +124,9 @@ export default function Home() {
           />
         ) : (
           <div className="flex min-h-[2.75rem] items-center text-center">
-            {d.caption ? (
+            {voice.caption ? (
               <p className="text-pretty text-[15px] leading-snug text-white/75">
-                {d.caption}
+                {voice.caption}
               </p>
             ) : null}
           </div>
@@ -139,7 +159,7 @@ export default function Home() {
             reservedHandle={onb.reservedHandle}
             activeHandle={onb.activeHandle}
             onClaim={(h) => {
-              tts.unlock();
+              voice.unlock();
               onb.claim(h);
             }}
             onRetry={onb.retry}

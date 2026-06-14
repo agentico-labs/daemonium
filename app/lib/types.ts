@@ -127,7 +127,7 @@ export const DAEMON_DATA_PART = "data-daemon" as const;
 /** POST /api/tts — body. Returns an audio stream to pipe into an AnalyserNode. */
 export interface TtsRequest {
   text: string;
-  voice?: string; // default "nova"
+  voice?: string; // app voice id from lib/voices (default "alien-3")
 }
 
 /** Request body for the confirm tap → POST /api/daemon/execute. */

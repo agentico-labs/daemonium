@@ -53,6 +53,9 @@ export function useDaemon() {
   const sendPrompt = useCallback(
     (text: string) => {
       setTxResult(null);
+      // Optimistic: flip the flame to `thinking` on the tap, not after the model's first
+      // token (~1.8s away). The stream re-emits `thinking` so this just removes the gap.
+      setState("thinking");
       void sendMessage({ text });
     },
     [sendMessage],

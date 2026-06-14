@@ -32,7 +32,7 @@ export function Flame({
   getAmplitude,
 }: {
   state: DaemonState;
-  /** Live voice amplitude 0..1 (e.g. useTts.getAmplitude). Drives the flame while speaking. */
+  /** Live voice amplitude 0..1 (e.g. useVoice.getAmplitude). Drives the flame while speaking. */
   getAmplitude?: () => number;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
