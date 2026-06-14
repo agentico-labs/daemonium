@@ -18,6 +18,7 @@ import { composeSwapAndZap, bridgeQuote, BRIDGE_CHAINS, chainNameForId } from ".
 import { getWallet } from "./wallet-store";
 import { createExecution } from "./executions";
 import { runSubagent } from "./subagent";
+import { startSpell, finishSpell } from "./spells";
 import type { DaemonEvent } from "./types";
 
 export type Emit = (ev: DaemonEvent) => void;
@@ -435,10 +436,19 @@ export function buildTools({
           return { error: `No sub-agent "${label}" in your cluster` };
         }
         emit({ type: "state", state: "delegating" });
-        const summary = await runSubagent({ label, task });
-        emit({ type: "subagentResult", agent: label, summary });
-        emit({ type: "state", state: "thinking" });
-        return { agent: label, summary };
+        // Register a live spell so the Cluster screen shows this dæmon actually working.
+        const spellId = startSpell(userId, { agent: label, title: task });
+        try {
+          const summary = await runSubagent({ label, task });
+          finishSpell(spellId, { ok: true, summary });
+          emit({ type: "subagentResult", agent: label, summary });
+          emit({ type: "state", state: "thinking" });
+          return { agent: label, summary };
+        } catch (err) {
+          finishSpell(spellId, { ok: false });
+          emit({ type: "state", state: "thinking" });
+          throw err;
+        }
       },
     }),
   };

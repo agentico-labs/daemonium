@@ -8,17 +8,18 @@ import { LiquidSigil } from '@/components/LiquidSigil';
 import { IdentityPanel } from '@/components/IdentityPanel';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { Onboarding } from '@/components/Onboarding';
-import { VoicePicker } from '@/components/VoicePicker';
 import { Cluster } from '@/components/Cluster';
 import { SummonSheet } from '@/components/SummonSheet';
 import { STATE_META } from '@/lib/stateMeta';
-import { MOCK_DAEMONS, MOCK_SPELLS, rootLabelOf } from '@/lib/cluster';
+import { rootLabelOf } from '@/lib/cluster';
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
 
 import { useFlameDaemon, type ChatMessage } from './lib/useFlameDaemon';
+import type { DaemonAction } from './lib/types';
 import { useVoice } from './lib/useVoice';
 import { useMic } from './lib/useMic';
 import { useOnboarding } from './lib/useOnboarding';
+import { useCluster } from './lib/useCluster';
 import { useProactiveWatch } from './lib/useProactiveWatch';
 import { DEFAULT_VOICE_ID } from './lib/voices';
 import { explorerTxUrl, explorerName } from './lib/chain';
@@ -27,16 +28,13 @@ export default function Home() {
   const d = useFlameDaemon();
   const { user, setShowAuthFlow } = useDynamicContext();
 
-  // Selected character voice (persisted), fed to the voice pipeline. Hydrated from storage in
-  // the initializer (the picker is client-only, so there's no SSR mismatch).
-  const [voiceId, setVoiceId] = useState(() =>
+  // Character voice fed to the voice pipeline — the persisted choice, or the default. The
+  // picker UI is hidden, so it no longer changes at runtime (hydrated once from storage).
+  const [voiceId] = useState(() =>
     typeof window === 'undefined'
       ? DEFAULT_VOICE_ID
       : (localStorage.getItem('ignis.voice') ?? DEFAULT_VOICE_ID),
   );
-  useEffect(() => {
-    localStorage.setItem('ignis.voice', voiceId);
-  }, [voiceId]);
 
   // Voice owns both the speech and the synced caption: it segments Ignis's streaming line into
   // sentences, speaks each as it's ready, and reveals the caption in lockstep with the audio.
@@ -45,7 +43,6 @@ export default function Home() {
 
   const shellRef = useRef<HTMLDivElement>(null);
   const pagerRef = useRef<HTMLDivElement>(null);
-  const clusterRef = useRef<HTMLElement>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [summonSlot, setSummonSlot] = useState<number | null>(null);
   const signedIn = !!user;
@@ -112,12 +109,11 @@ export default function Home() {
     setShowAuthFlow(true);
   };
 
-  // The cluster (page 2) + summon ritual. Roster/spells are mock for now; the root label
-  // comes from the live identity, so roster handles and the summon suffix are real.
+  // The cluster (page 2) + summon ritual. The roster + live spells come from the agent's real
+  // wallet tree and run registry (polled); the root label comes from the live identity.
   const rootLabel = rootLabelOf(onb.ensName);
+  const cluster = useCluster({ enabled: ready, rootLabel });
 
-  const goToCluster = () =>
-    clusterRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const goToHome = () => pagerRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 
   const openSummon = (slot: number) => {
@@ -141,7 +137,8 @@ export default function Home() {
     }, 650);
   };
 
-  const showConfirmZone = !!d.proposal || !!d.txResult || !!mic.error;
+  const showConfirmZone =
+    !!d.proposal || !!d.executingAction || !!d.txResult || !!mic.error;
 
   return (
     <main
@@ -178,7 +175,6 @@ export default function Home() {
           {ready && onb.ensName ? (
             <div className="mt-3 flex flex-none flex-col items-center gap-2">
               <ENSHeaderPill ensName={onb.ensName} onOpen={() => setPanelOpen(true)} />
-              <VoicePicker value={voiceId} onChange={setVoiceId} />
             </div>
           ) : null}
 
@@ -201,15 +197,13 @@ export default function Home() {
                   onDismiss={d.dismissProposal}
                 />
               ) : null}
+              {d.executingAction ? <WorkingLine action={d.executingAction} /> : null}
               {d.txResult ? <TxLine result={d.txResult} /> : null}
               {mic.error ? (
                 <span className="text-[12px] text-red-400/80">{mic.error}</span>
               ) : null}
             </div>
           ) : null}
-
-          {/* a faint hint that the cluster waits below (out of the way during a confirm) */}
-          {ready && !showConfirmZone ? <ClusterHint onClick={goToCluster} /> : null}
 
           {/* the control: summon (logged out) → onboarding (no dæmon) → liquid sigil (ready) */}
           {!signedIn ? (
@@ -243,15 +237,15 @@ export default function Home() {
         {/* page 2 — the cluster (only once there's a dæmon to show) */}
         {ready && onb.ensName ? (
           <section
-            ref={clusterRef}
             aria-label="Dæmon cluster"
             className="relative h-full w-full overflow-hidden"
             style={{ scrollSnapAlign: 'start' }}
           >
             <Cluster
               rootLabel={rootLabel}
-              daemons={MOCK_DAEMONS}
-              spells={MOCK_SPELLS}
+              daemons={cluster.daemons}
+              spells={cluster.spells}
+              summary={cluster.summary}
               activeSlot={summonSlot}
               onSlotTap={openSummon}
             />
@@ -264,7 +258,7 @@ export default function Home() {
         <SummonSheet
           rootEnsName={onb.ensName}
           rootLabel={rootLabel}
-          takenLabels={MOCK_DAEMONS.map((dm) => dm.sub)}
+          takenLabels={cluster.daemons.map((dm) => dm.sub)}
           onKindle={handleKindle}
           onDismiss={closeSummon}
         />
@@ -275,34 +269,6 @@ export default function Home() {
         <IdentityPanel ensName={onb.ensName} onClose={() => setPanelOpen(false)} />
       ) : null}
     </main>
-  );
-}
-
-/** A faint, bobbing downward chevron on Home that reveals (and jumps to) the cluster below. */
-function ClusterHint({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Show cluster"
-      className="relative z-[2] flex flex-none flex-col items-center gap-0.5 pb-1 pt-1"
-      style={{ background: 'transparent', border: 'none', color: 'rgba(246,236,221,.4)' }}
-    >
-      <span className="text-[10px] uppercase tracking-[1.5px]">Cluster</span>
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ animation: 'cluster-chev 1.8s ease-in-out infinite' }}
-      >
-        <path d="M6 9l6 6 6-6" />
-      </svg>
-    </button>
   );
 }
 
@@ -324,6 +290,39 @@ function SummonGate({ onSummon }: { onSummon: () => void }) {
       <p className="text-[13px] text-white/45">
         Sign in to wake your dæmon and its wallet.
       </p>
+    </div>
+  );
+}
+
+/** Present-participle of each action, for the "working" line shown through the executing wait. */
+const WORKING_VERB: Record<DaemonAction, string> = {
+  send_usdc: 'Sending USDC',
+  send_eth: 'Sending ETH',
+  swap: 'Swapping',
+  lifi_zap: 'Depositing into the vault',
+  lifi_bridge: 'Bridging across chains',
+  spawn_subagent: 'Forging the sub-dæmon',
+};
+
+/** Shown while a confirmed action is signing+broadcasting — an honest, state-tinted progress
+ *  beat so the wait reads as the flame actively working, not stalled. */
+function WorkingLine({ action }: { action: DaemonAction }) {
+  return (
+    <div
+      className="flex items-center gap-2 text-[12px]"
+      style={{ color: 'color-mix(in srgb, var(--state, #ff7a18) 80%, white)' }}
+    >
+      <span
+        className="inline-block rounded-full"
+        style={{
+          width: 7,
+          height: 7,
+          background: 'var(--state, #ff7a18)',
+          boxShadow: '0 0 9px var(--state, #ff7a18)',
+          animation: 'working-pulse 1.1s ease-in-out infinite',
+        }}
+      />
+      {WORKING_VERB[action]} onchain…
     </div>
   );
 }

@@ -123,6 +123,27 @@ body {
     transform: scale(1.07);
   }
 }
+/* A running spell has no real percent — this segment slides across as an indeterminate bar. */
+@keyframes spell-flow {
+  0% {
+    left: -42%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+/* The dot on the "working" line shown through the executing wait — a steady onchain heartbeat. */
+@keyframes working-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+}
 @keyframes ping-warm {
   0% {
     box-shadow: 0 0 0 0 rgba(255, 120, 60, 0.5);
@@ -218,17 +239,6 @@ body {
   50% {
     opacity: 1;
     transform: scale(1.06);
-  }
-}
-@keyframes cluster-chev {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.4;
-  }
-  50% {
-    transform: translateY(4px);
-    opacity: 0.8;
   }
 }
 @keyframes cluster-dots {

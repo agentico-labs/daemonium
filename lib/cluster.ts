@@ -86,17 +86,34 @@ export interface StarNode {
   element: Element | null;
   /** Empty-slot index (the summon target); present only when element === null. */
   slot?: number;
+  /** Ring position 0–4 (the center is -1) — picks the node's staggered ambient timing. */
+  ring: number;
 }
 
-/** The pentagram layout: Ignis at center, three burning points, two empty slots. */
-export const STAR_NODES: StarNode[] = [
-  { id: 'ignis', top: '50%', left: '50%', size: 80, element: 'fire' },
-  { id: 'research', top: '10%', left: '50%', size: 54, element: 'blue' },
-  { id: 'scout', top: '37.6%', left: '88%', size: 48, element: 'green' },
-  { id: 'herald', top: '82.4%', left: '73.5%', size: 44, element: 'purple' },
-  { id: 'slot-0', top: '82.4%', left: '26.5%', size: 36, element: null, slot: 0 },
-  { id: 'slot-1', top: '37.6%', left: '12%', size: 36, element: null, slot: 1 },
+/** The pentagram's five point positions (the design's coordinates), in placement order. */
+const STAR_POINTS: Array<{ top: string; left: string; size: number }> = [
+  { top: '10%', left: '50%', size: 54 }, // top
+  { top: '37.6%', left: '88%', size: 48 }, // upper-right
+  { top: '82.4%', left: '73.5%', size: 44 }, // lower-right
+  { top: '82.4%', left: '26.5%', size: 36 }, // lower-left
+  { top: '37.6%', left: '12%', size: 36 }, // upper-left
 ];
+
+/**
+ * Build the elemental star from the live roster: Ignis (fire) at the center, each sub-dæmon on
+ * the next pentagram point (recolored to its element), and every remaining point an empty `+`
+ * slot the summon ritual can fill. With no sub-dæmons yet, it's Ignis ringed by five open slots.
+ */
+export function buildStarNodes(daemons: ClusterDaemon[]): StarNode[] {
+  const center: StarNode = { id: 'ignis', top: '50%', left: '50%', size: 80, element: 'fire', ring: -1 };
+  const points = STAR_POINTS.map((p, i): StarNode => {
+    const d = daemons[i];
+    return d
+      ? { id: d.id, ...p, element: d.element, ring: i }
+      : { id: `slot-${i - daemons.length}`, ...p, element: null, slot: i - daemons.length, ring: i };
+  });
+  return [center, ...points];
+}
 
 /** A sub-dæmon in the roster. `sub` is the leaf label; the row shows `${sub}.${rootLabel}`. */
 export interface ClusterDaemon {
@@ -122,65 +139,100 @@ export interface Spell {
   percent: number;
   description: string;
   tone: SpellTone;
+  /** Live state — running threads render an indeterminate shimmer instead of a percent fill.
+   *  Optional so the design-mock spells (no real lifecycle) still type-check. */
+  status?: 'running' | 'done' | 'failed';
 }
 
-// ---- MOCK data (design handoff placeholders). Swap for a live feed when one exists. ----
+// ---- Live feed shapes (GET /api/daemon/cluster). Client-safe DTOs the server fills from the
+//      wallet tree + the spell registry; the page maps them into the view-models above. ----
 
-export const MOCK_DAEMONS: ClusterDaemon[] = [
-  {
-    id: 'research',
-    sub: 'research',
-    element: 'blue',
-    doingNow: 'analyzing $HIGHER liquidity',
-    status: 'researching',
-    elapsed: '0:42',
-  },
-  {
-    id: 'scout',
-    sub: 'scout',
-    element: 'green',
-    doingNow: 'watching 14 new pairs',
-    status: 'working',
-    elapsed: '3:08',
-  },
-  {
-    id: 'herald',
-    sub: 'herald',
-    element: 'purple',
-    doingNow: 'no active task',
-    status: 'idle',
-    elapsed: '18m',
-  },
-];
+/** A sub-dæmon as the cluster endpoint reports it (the raw, transport shape). */
+export interface ClusterDaemonDTO {
+  /** Leaf label, e.g. "research" (row shows `${sub}.${rootLabel}`). */
+  sub: string;
+  ensName: string;
+  address: string;
+  /** Whether a spell is running for this dæmon right now. */
+  status: 'working' | 'idle';
+  doingNow: string;
+  /** Seconds the current task has been running, or null when idle. */
+  elapsedSec: number | null;
+}
 
-export const MOCK_SPELLS: Spell[] = [
-  {
-    id: 'higher',
-    title: 'Researching $HIGHER',
-    elapsed: '0:42',
-    percent: 68,
-    description: 'checking liquidity, holders & momentum…',
-    tone: 'ember',
-  },
-  {
-    id: 'pairs',
-    title: 'Scanning new pairs on Base',
-    elapsed: '3:08',
-    percent: 84,
-    description: '14 new pairs found · ranking by momentum…',
-    tone: 'ember',
-  },
-  {
-    id: 'settle',
-    title: 'Settling 12 USDC → wallet',
-    elapsed: '0:08',
-    percent: 92,
-    description: 'auto-swapping via x402 · almost done…',
-    tone: 'ignis',
-  },
-];
+/** A live/recent spell as the endpoint reports it. */
+export interface SpellDTO {
+  id: string;
+  title: string;
+  /** Acting sub-dæmon's leaf label. */
+  agent: string;
+  status: 'running' | 'done' | 'failed';
+  elapsedSec: number;
+  summary?: string;
+}
 
-export const SPELL_SUMMARY = '3 active · 1 queued';
+export interface ClusterResponse {
+  rootLabel: string;
+  daemons: ClusterDaemonDTO[];
+  spells: SpellDTO[];
+}
+
+/** Elements handed to sub-dæmons in roster order (Ignis is always fire, at the center). */
+const SUB_ELEMENTS: Element[] = ['blue', 'green', 'purple', 'blue', 'green'];
+export function elementForIndex(i: number): Element {
+  return SUB_ELEMENTS[i % SUB_ELEMENTS.length];
+}
+
+/** mm:ss for live durations, e.g. 42 → "0:42", 188 → "3:08". */
+export function formatElapsed(sec: number): string {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Map the endpoint's roster DTOs into the roster view-model (assigning elements by order). */
+export function toClusterDaemons(dtos: ClusterDaemonDTO[]): ClusterDaemon[] {
+  return dtos.map((d, i) => ({
+    id: d.sub,
+    sub: d.sub,
+    element: elementForIndex(i),
+    doingNow: d.doingNow,
+    status: d.status,
+    elapsed: d.elapsedSec != null ? formatElapsed(d.elapsedSec) : '—',
+  }));
+}
+
+/** Map the endpoint's spell DTOs into the spell-thread view-model. */
+export function toSpells(dtos: SpellDTO[], rootLabel: string): Spell[] {
+  return dtos.map((s) => {
+    const running = s.status === 'running';
+    const failed = s.status === 'failed';
+    return {
+      id: s.id,
+      title: s.title,
+      elapsed: formatElapsed(s.elapsedSec),
+      percent: running ? 100 : failed ? 0 : 100,
+      description:
+        s.summary ?? (running ? 'working…' : failed ? 'failed' : 'done'),
+      tone: s.agent === rootLabel ? 'ignis' : 'ember',
+      status: s.status,
+    };
+  });
+}
+
+/** "2 active · 1 done" — the live spell summary line. */
+export function spellSummary(dtos: SpellDTO[]): string {
+  const active = dtos.filter((s) => s.status === 'running').length;
+  const settled = dtos.length - active;
+  const parts: string[] = [];
+  if (active) parts.push(`${active} active`);
+  if (settled) parts.push(`${settled} recent`);
+  return parts.join(' · ') || 'none active';
+}
+
+// The roster + spells are live now — fed by GET /api/daemon/cluster through app/lib/useCluster.ts
+// and mapped via toClusterDaemons / toSpells above. (The old hardcoded MOCK_DAEMONS / MOCK_SPELLS
+// design-handoff placeholders lived here and have been removed.)
 
 /** Leaf label of the root ENS name, e.g. "ignis" from "ignis.daemonium.eth". */
 export function rootLabelOf(ensName: string | null | undefined): string {

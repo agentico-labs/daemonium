@@ -15,22 +15,23 @@ import type { CSSProperties } from 'react';
 import { FlameImage } from '@/components/FlameImage';
 import {
   ELEMENTS,
-  STAR_NODES,
-  SPELL_SUMMARY,
+  buildStarNodes,
   flameFilter,
   type ClusterDaemon,
   type Spell,
   type StarNode,
 } from '@/lib/cluster';
 
-// Per-node ambient timings (staggered so the flames don't breathe in lockstep) — the
-// design's exact values. Slots have no animation.
-const STAR_TIMING: Record<string, { breathe: number; halo: number; delay: number }> = {
-  ignis: { breathe: 5, halo: 4, delay: 0 },
-  research: { breathe: 4.6, halo: 4.2, delay: 0 },
-  scout: { breathe: 5.2, halo: 5, delay: 0.5 },
-  herald: { breathe: 4.9, halo: 4.4, delay: 0.9 },
-};
+// Per-ring ambient timings (staggered so the flames don't breathe in lockstep) — the design's
+// values, keyed by ring position. The center (ring -1) uses CENTER_TIMING. Slots aren't animated.
+const CENTER_TIMING = { breathe: 5, halo: 4, delay: 0 };
+const RING_TIMING: Array<{ breathe: number; halo: number; delay: number }> = [
+  { breathe: 4.6, halo: 4.2, delay: 0 },
+  { breathe: 5.2, halo: 5, delay: 0.5 },
+  { breathe: 4.9, halo: 4.4, delay: 0.9 },
+  { breathe: 4.7, halo: 4.6, delay: 0.3 },
+  { breathe: 5.1, halo: 4.8, delay: 0.7 },
+];
 
 // Static star scaffold (concentric rings + the slowly-spinning dashed ring + the pentagram).
 // Hoisted out of the component — it never changes (rendering-hoist-jsx).
@@ -86,8 +87,8 @@ function StarNodeView({
 
   if (node.element) {
     const el = ELEMENTS[node.element];
-    const t = STAR_TIMING[node.id] ?? { breathe: 5, halo: 4, delay: 0 };
-    const isCenter = node.id === 'ignis';
+    const isCenter = node.ring === -1;
+    const t = isCenter ? CENTER_TIMING : RING_TIMING[node.ring] ?? CENTER_TIMING;
     const haloInset = isCenter ? '-18%' : '-24%';
     const haloBlur = isCenter ? 13 : 8;
     const shadowBlur = isCenter ? 14 : 7;
@@ -194,6 +195,9 @@ function SpellThread({ spell }: { spell: Spell }) {
   const timeColor = ember ? 'rgba(255,200,150,.7)' : 'rgba(255,190,140,.7)';
   const descColor = ember ? 'rgba(255,200,150,.62)' : 'rgba(255,190,140,.62)';
   const remaining = 100 - spell.percent;
+  // A live run has no honest percent (the sub-agent doesn't report progress), so it gets an
+  // indeterminate shimmer instead of a fabricated fill. Settled spells show a full/empty bar.
+  const running = spell.status === 'running';
 
   return (
     <div>
@@ -211,28 +215,45 @@ function SpellThread({ spell }: { spell: Spell }) {
       </div>
 
       <div
-        className="relative ml-[17px] mt-2 h-1 rounded-[3px]"
+        className="relative ml-[17px] mt-2 h-1 overflow-hidden rounded-[3px]"
         style={{ background: 'rgba(255,255,255,.06)' }}
       >
-        <div
-          className="absolute rounded-[3px]"
-          style={{
-            inset: `0 ${remaining}% 0 0`,
-            background: `linear-gradient(90deg, ${fillStart}, ${fillEnd})`,
-            boxShadow: `0 0 10px ${fillGlow}`,
-          }}
-        />
-        <div
-          className="absolute rounded-full"
-          style={{
-            left: `${spell.percent}%`,
-            top: -2,
-            width: 8,
-            height: 8,
-            background: '#ffe0bf',
-            boxShadow: `0 0 9px ${knobGlow}`,
-          }}
-        />
+        {running ? (
+          // Indeterminate: a glowing segment sliding across, no knob (no real percent to point to).
+          <div
+            className="absolute rounded-[3px]"
+            style={{
+              top: 0,
+              bottom: 0,
+              width: '42%',
+              background: `linear-gradient(90deg, transparent, ${fillEnd}, transparent)`,
+              boxShadow: `0 0 10px ${fillGlow}`,
+              animation: 'spell-flow 1.5s ease-in-out infinite',
+            }}
+          />
+        ) : (
+          <>
+            <div
+              className="absolute rounded-[3px]"
+              style={{
+                inset: `0 ${remaining}% 0 0`,
+                background: `linear-gradient(90deg, ${fillStart}, ${fillEnd})`,
+                boxShadow: `0 0 10px ${fillGlow}`,
+              }}
+            />
+            <div
+              className="absolute rounded-full"
+              style={{
+                left: `${spell.percent}%`,
+                top: -2,
+                width: 8,
+                height: 8,
+                background: '#ffe0bf',
+                boxShadow: `0 0 9px ${knobGlow}`,
+              }}
+            />
+          </>
+        )}
       </div>
 
       <div className="ml-[17px] mt-1.5 text-[11.5px]" style={{ color: descColor }}>
@@ -246,6 +267,7 @@ export function Cluster({
   rootLabel,
   daemons,
   spells,
+  summary,
   activeSlot,
   onSlotTap,
 }: {
@@ -253,11 +275,14 @@ export function Cluster({
   rootLabel: string;
   daemons: ClusterDaemon[];
   spells: Spell[];
+  /** Live "Current spells" summary line, e.g. "2 active · 1 recent". */
+  summary: string;
   /** The empty slot currently being summoned into (pulses), or null. */
   activeSlot: number | null;
   /** Tap an empty `+` slot — the page opens the summon ritual for it. */
   onSlotTap: (slot: number) => void;
 }) {
+  const starNodes = buildStarNodes(daemons);
   return (
     <div
       className="relative flex h-full w-full flex-col overflow-hidden"
@@ -292,7 +317,7 @@ export function Cluster({
       {/* elemental star hero */}
       <div className="relative z-[2] mx-auto flex-none" style={{ width: 230, height: 230 }}>
         {STAR_SCAFFOLD}
-        {STAR_NODES.map((node) => (
+        {starNodes.map((node) => (
           <StarNodeView
             key={node.id}
             node={node}
@@ -311,9 +336,14 @@ export function Cluster({
           Daemons
         </div>
         <div className="flex flex-col gap-0.5">
-          {daemons.map((d) => (
-            <DaemonRow key={d.id} daemon={d} rootLabel={rootLabel} />
-          ))}
+          {daemons.length ? (
+            daemons.map((d) => <DaemonRow key={d.id} daemon={d} rootLabel={rootLabel} />)
+          ) : (
+            <p className="py-1 text-[12px]" style={{ color: 'rgba(246,236,221,.4)' }}>
+              No sub-dæmons yet — tap a <span style={{ color: 'rgba(255,200,130,.8)' }}>+</span> on the
+              star to summon one.
+            </p>
+          )}
         </div>
       </div>
 
@@ -330,13 +360,17 @@ export function Cluster({
             className="font-mono text-[11px] whitespace-nowrap"
             style={{ color: 'rgba(246,236,221,.4)' }}
           >
-            {SPELL_SUMMARY}
+            {summary}
           </span>
         </div>
         <div className="flex flex-col gap-[15px]">
-          {spells.map((s) => (
-            <SpellThread key={s.id} spell={s} />
-          ))}
+          {spells.length ? (
+            spells.map((s) => <SpellThread key={s.id} spell={s} />)
+          ) : (
+            <p className="text-[12px]" style={{ color: 'rgba(246,236,221,.4)' }}>
+              Quiet for now. When a dæmon takes on a task, its spell burns here.
+            </p>
+          )}
         </div>
       </div>
     </div>
