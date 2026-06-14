@@ -84,7 +84,7 @@ export function HandleGate({
   if (state.status === "completing") {
     return (
       <p className="text-sm text-zinc-500">
-        Finishing your dæmon&apos;s setup (minting on Sepolia, ~30s)…
+        Finishing your dæmon&apos;s setup (minting on Ethereum, ~30s)…
       </p>
     );
   }

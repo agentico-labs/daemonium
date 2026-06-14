@@ -2,8 +2,8 @@
 
 /**
  * First-login handle picker. The user chooses a handle → their dæmon is provisioned at
- * ignis.<handle>.daemonium.eth (ENS subtree + ERC-8004 + text record, all minted by the
- * minter). This POST is slow (several Sepolia txs), so we show a "summoning" state.
+ * <handle>.daemonium.eth (ENS subtree + ERC-8004 + text record, all minted by the
+ * minter). This POST is slow (several Ethereum txs), so we show a "summoning" state.
  *
  * Error handling: a 409 (taken/reserved) lets the user pick another; a 500 means the handle was
  * already reserved for them but minting hiccupped — we lock to that handle and offer a retry
@@ -35,7 +35,7 @@ export function HandleModal({ onDone }: { onDone: (ensName: string) => void }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        onDone(data.ensName ?? `ignis.${normalized}.daemonium.eth`);
+        onDone(data.ensName ?? `${normalized}.daemonium.eth`);
         return;
       }
       if (res.status === 500 && data.handle) {
@@ -59,14 +59,13 @@ export function HandleModal({ onDone }: { onDone: (ensName: string) => void }) {
         <p className="mt-1 text-sm text-zinc-400">
           Pick a handle. Your Ignis will live at{" "}
           <span className="font-mono text-orange-300">
-            ignis.{normalized || "<handle>"}.daemonium.eth
+            {normalized || "<handle>"}.daemonium.eth
           </span>
           .
         </p>
       </div>
 
       <div className="flex items-center gap-2 rounded-md border border-zinc-700 bg-black px-3 py-2 font-mono text-sm">
-        <span className="text-zinc-500">ignis.</span>
         <input
           autoFocus
           value={reserved ?? handle}
@@ -90,7 +89,7 @@ export function HandleModal({ onDone }: { onDone: (ensName: string) => void }) {
         className="rounded-md bg-orange-500 px-4 py-2 text-sm font-medium text-black hover:bg-orange-400 disabled:opacity-40"
       >
         {busy
-          ? "Summoning Ignis… (minting on Sepolia, ~30s)"
+          ? "Summoning Ignis… (minting on Ethereum, ~30s)"
           : reserved
             ? "Retry minting"
             : "Summon"}

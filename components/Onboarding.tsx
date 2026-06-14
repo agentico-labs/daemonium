@@ -39,14 +39,14 @@ export function Onboarding({
     return <p className="text-[13px] text-white/40">Stirring…</p>;
   }
 
-  // Provisioning in flight — several Sepolia txs, ~30s. The flame goes "thinking".
+  // Provisioning in flight — several Ethereum txs, ~30s. The flame goes "thinking".
   if (status === 'summoning') {
     return (
       <div className="flex flex-col items-center gap-2 text-center">
         <p className="text-[15px] font-medium text-white/80">Summoning Ignis…</p>
         <p className="text-[12px] text-white/40">
-          {activeHandle ? `ignis.${activeHandle}.daemonium.eth · ` : ''}
-          minting on Sepolia (~30s)
+          {activeHandle ? `${activeHandle}.daemonium.eth · ` : ''}
+          minting on Ethereum (~30s)
         </p>
       </div>
     );
@@ -89,7 +89,7 @@ export function Onboarding({
         <p className="text-[13px] text-white/45">
           Your Ignis will live at{' '}
           <span className="font-mono text-white/70">
-            ignis.{normalized || '<name>'}.daemonium.eth
+            {normalized || '<name>'}.daemonium.eth
           </span>
         </p>
       </div>
@@ -101,7 +101,6 @@ export function Onboarding({
             '0 0 24px color-mix(in srgb, var(--state, #ff7a18) 12%, transparent)',
         }}
       >
-        <span className="text-white/35">ignis.</span>
         <input
           autoFocus
           value={reservedHandle ?? text}

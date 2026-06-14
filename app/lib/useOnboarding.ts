@@ -4,7 +4,7 @@
  * First-run onboarding for the flame page: does the signed-in user have a fully
  * provisioned dæmon yet? Wraps the same /api/daemon/handle contract the dev
  * console's HandleGate uses — GET to check, POST to claim a handle (which
- * auto-provisions ENS + ERC-8004, several Sepolia txs). The component layer
+ * auto-provisions ENS + ERC-8004, several Ethereum txs). The component layer
  * (components/Onboarding) renders this in the flame's visual language.
  *
  * Self-heals like the console: a handle that exists but didn't finish minting is
@@ -23,7 +23,7 @@ export type OnboardingStatus =
 
 export interface Onboarding {
   status: OnboardingStatus;
-  /** The real ENS name once provisioned (ignis.<handle>.daemonium.eth), else null. */
+  /** The real ENS name once provisioned (<handle>.daemonium.eth), else null. */
   ensName: string | null;
   error: string | null;
   /** Set after a mint hiccup reserves a handle to this user — a retry must reuse it. */

@@ -1,8 +1,8 @@
 /**
  * Per-user handle: GET to check if the caller has one yet (the frontend shows the picker
  * modal if not), POST to claim one. Claiming a handle AUTO-PROVISIONS the user's dæmon
- * identity (mints ignis.<handle>.daemonium.eth + ERC-8004 + text record via the minter) —
- * no separate "claim" step. This is the slow call (several Sepolia txs); the modal shows a
+ * identity (mints <handle>.daemonium.eth + ERC-8004 + text record via the minter) —
+ * no separate "claim" step. This is the slow call (several Ethereum txs); the modal shows a
  * loading state.
  */
 import { verifyUser, AuthError } from "@/app/lib/auth";
