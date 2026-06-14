@@ -12,10 +12,6 @@
  *
  * Speaking is a real external side effect gated on a state transition, so an effect is the
  * right tool here. Transient bookkeeping (previous-busy, last-spoken) lives in refs.
- *
- * Wiring (see report): in the page, after `const d = useFlameDaemon()` and a `useTts()`, add
- *   useSpeakOnNewLine(d.caption, d.busy, tts.speak);
- * and call `tts.unlock()` inside the existing button tap handlers (Summon / mic / actions).
  */
 import { useEffect, useRef } from "react";
 

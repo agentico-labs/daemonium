@@ -1,6 +1,5 @@
-// Quick-action chips. Each one feeds an utterance through the same path a
-// spoken request will (useDaemon.run), so the skeleton already exercises the
-// event protocol end-to-end against the mock.
+// Quick-action chips. Each one feeds an utterance through the same path a spoken
+// request takes (the agent run), so a tap exercises the full event loop.
 const CHIPS: { label: string; utterance: string }[] = [
   { label: 'Balance', utterance: "what's my balance" },
   { label: 'Send', utterance: 'send 2 usdc to alejandro.eth' },

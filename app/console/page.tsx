@@ -7,9 +7,9 @@ import { Console } from '../components/console';
 import { HandleGate } from '../components/handle-gate';
 
 /**
- * Workstream B dev panel — Dynamic login, embedded-wallet info, and the agent
- * test console. Kept on its own route so the flame at `/` stays clean; this is
- * where you sign in and drive the real backend.
+ * Dev panel — Dynamic login, embedded-wallet info, and the agent test console.
+ * Kept on its own route so the flame at `/` stays clean; this is where you sign
+ * in and drive the real backend directly.
  */
 export default function DevConsolePage() {
   const { user, primaryWallet } = useDynamicContext();

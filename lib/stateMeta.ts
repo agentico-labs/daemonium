@@ -9,7 +9,6 @@ export interface StateMeta {
 
 /**
  * The 7 DaemonStates → their copy + color.
- * Mirrors the mapping in NOTE_FOR_MYSELF.md:
  *   idle=orange · listening=green · thinking/executing=blue ·
  *   delegating=indigo · success=bright green · error=red.
  */

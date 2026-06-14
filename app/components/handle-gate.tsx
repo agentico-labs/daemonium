@@ -5,7 +5,7 @@
  * ERC-8004). Shows the picker until a handle exists; if a handle exists but identity didn't
  * finish (e.g. a mint reverted on an earlier attempt), it re-runs provisioning idempotently —
  * so half-provisioned accounts self-heal on next login instead of being stuck. Mount only when
- * logged in. Reusable by Workstream A's flame page.
+ * logged in.
  */
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { authHeaders } from "../lib/daemon-client";

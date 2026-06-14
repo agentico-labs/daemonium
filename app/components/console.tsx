@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Dev console for Workstream B — a text stand-in for the voice loop + flame. Lets you talk
- * to Ignis, watch the flame state, and approve proposals. Workstream A replaces this with
- * the animated flame, but it consumes the exact same useDaemon() seam.
+ * Dev console — a text stand-in for the voice loop + flame. Lets you talk to Ignis, watch
+ * the flame state, and approve proposals. The animated flame at `/` consumes the exact same
+ * useDaemon() seam; this is the bare-bones view for debugging the agent.
  */
 import { useState } from "react";
 import { useDaemon } from "../lib/daemon-client";

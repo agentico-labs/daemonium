@@ -1,5 +1,6 @@
 /**
- * The seam between Workstream A (flame/animation) and Workstream B (agent/onchain).
+ * The seam between the two halves of the app: the flame/animation frontend and the
+ * agent/onchain backend.
  *
  * The agent backend emits a stream of `DaemonEvent`s (carried as ai-sdk `data-daemon`
  * parts); the flame consumes them. State-changing actions surface as a `ProposalCard`
