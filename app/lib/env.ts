@@ -12,7 +12,8 @@ const required = z.string().min(1);
 
 const schema = z.object({
   // --- Required: the app cannot run without these (no in-code default). ---
-  OPENAI_API_KEY: required, //          voice — /api/tts + /api/stt
+  OPENAI_API_KEY: required, //          speech-to-text — /api/stt
+  ELEVENLABS_API_KEY: required, //      text-to-speech — /api/tts (character voices)
   AI_GATEWAY_API_KEY: required, //      the agent — Claude via the Vercel AI Gateway
   DYNAMIC_ENVIRONMENT_ID: required, //  auth (JWKS) + server MPC wallets
   DYNAMIC_API_TOKEN: required, //       server-wallet API client

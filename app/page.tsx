@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Flame } from '@/components/Flame';
 import { ENSHeaderPill } from '@/components/ENSHeaderPill';
 import { ChatThread } from '@/components/ChatThread';
@@ -8,25 +8,36 @@ import { LiquidSigil } from '@/components/LiquidSigil';
 import { IdentityPanel } from '@/components/IdentityPanel';
 import { ConfirmCard } from '@/components/ConfirmCard';
 import { Onboarding } from '@/components/Onboarding';
+import { VoicePicker } from '@/components/VoicePicker';
 import { STATE_META } from '@/lib/stateMeta';
 import { useDynamicContext } from '@dynamic-labs/sdk-react-core';
 
-import { useFlameDaemon } from './lib/useFlameDaemon';
-import { useTts } from './lib/useTts';
+import { useFlameDaemon, type ChatMessage } from './lib/useFlameDaemon';
+import { useVoice } from './lib/useVoice';
 import { useMic } from './lib/useMic';
-import { useSpeakOnNewLine } from './lib/useSpeakOnNewLine';
 import { useOnboarding } from './lib/useOnboarding';
 import { useProactiveWatch } from './lib/useProactiveWatch';
+import { DEFAULT_VOICE_ID } from './lib/voices';
 import { explorerTx } from './lib/chain';
 
 export default function Home() {
   const d = useFlameDaemon();
   const { user, setShowAuthFlow } = useDynamicContext();
-  const tts = useTts();
-  const mic = useMic({ onTranscript: d.run, isSpeaking: tts.isSpeaking });
 
-  // Speak each finished assistant line aloud (once it's final, not the partial stream).
-  useSpeakOnNewLine(d.caption, d.busy, tts.speak);
+  // Selected character voice (persisted), fed to the voice pipeline.
+  const [voiceId, setVoiceId] = useState(DEFAULT_VOICE_ID);
+  useEffect(() => {
+    const saved = localStorage.getItem('ignis.voice');
+    if (saved) setVoiceId(saved);
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('ignis.voice', voiceId);
+  }, [voiceId]);
+
+  // Voice owns both the speech and the synced caption: it segments Ignis's streaming line into
+  // sentences, speaks each as it's ready, and reveals the caption in lockstep with the audio.
+  const voice = useVoice({ text: d.caption, busy: d.busy, voice: voiceId });
+  const mic = useMic({ onTranscript: d.run, isSpeaking: voice.isSpeaking });
 
   const shellRef = useRef<HTMLDivElement>(null);
   const [panelOpen, setPanelOpen] = useState(false);
@@ -40,7 +51,7 @@ export default function Home() {
   // arrive — held back while a turn, the mic, speech, or a proposal is in flight.
   useProactiveWatch({
     enabled: ready,
-    paused: d.busy || mic.recording || tts.isSpeaking || !!d.proposal,
+    paused: d.busy || mic.recording || voice.isSpeaking || !!d.proposal,
     run: d.run,
   });
 
@@ -59,23 +70,36 @@ export default function Home() {
     shellRef.current?.style.setProperty('--state', STATE_META[flameState].color);
   }, [flameState]);
 
+  // The chat thread shows the conversation; while Ignis is speaking, the last line is revealed
+  // in sync with the voice (voice.caption) instead of dumping the whole reply at once — and is
+  // held back until the first sentence is voiced, so the text never runs ahead of the audio.
+  const messages = useMemo<ChatMessage[]>(() => {
+    const last = d.messages[d.messages.length - 1];
+    if (!last || last.role !== 'ignis') return d.messages;
+    if (d.busy || voice.isSpeaking) {
+      const head = d.messages.slice(0, -1);
+      return voice.caption ? [...head, { ...last, text: voice.caption }] : head;
+    }
+    return d.messages;
+  }, [d.messages, voice.caption, d.busy, voice.isSpeaking]);
+
   const handleTap = useCallback(() => {
-    tts.unlock();
+    voice.unlock();
     mic.toggle();
-  }, [tts.unlock, mic.toggle]);
+  }, [voice.unlock, mic.toggle]);
 
   const handleSubmit = useCallback(
     (text: string) => {
-      tts.unlock();
+      voice.unlock();
       d.run(text);
     },
-    [tts.unlock, d.run],
+    [voice.unlock, d.run],
   );
 
   const handleSummon = useCallback(() => {
-    tts.unlock();
+    voice.unlock();
     setShowAuthFlow(true);
-  }, [tts.unlock, setShowAuthFlow]);
+  }, [voice.unlock, setShowAuthFlow]);
 
   const showConfirmZone = !!d.proposal || !!d.txResult || !!mic.error;
 
@@ -99,20 +123,21 @@ export default function Home() {
         }}
       />
 
-      {/* ENS header — only once provisioned */}
+      {/* ENS header + voice picker — only once provisioned */}
       {ready && onb.ensName ? (
-        <div className="mt-3 flex-none">
+        <div className="mt-3 flex flex-none flex-col items-center gap-2">
           <ENSHeaderPill ensName={onb.ensName} onOpen={() => setPanelOpen(true)} />
+          <VoicePicker value={voiceId} onChange={setVoiceId} />
         </div>
       ) : null}
 
       {/* the flame — the protagonist, present in every state */}
       <div className="relative z-[2] -mt-1 flex flex-none items-center justify-center">
-        <Flame state={flameState} getAmplitude={tts.getAmplitude} />
+        <Flame state={flameState} getAmplitude={voice.getAmplitude} />
       </div>
 
       {/* the room between flame and control: the chat thread, or empty space */}
-      {ready ? <ChatThread messages={d.messages} /> : <div className="w-full flex-1" />}
+      {ready ? <ChatThread messages={messages} /> : <div className="w-full flex-1" />}
 
       {/* the human-confirm gate + last outcome + mic errors, just above the control */}
       {showConfirmZone ? (
@@ -152,7 +177,7 @@ export default function Home() {
             reservedHandle={onb.reservedHandle}
             activeHandle={onb.activeHandle}
             onClaim={(h) => {
-              tts.unlock();
+              voice.unlock();
               onb.claim(h);
             }}
             onRetry={onb.retry}

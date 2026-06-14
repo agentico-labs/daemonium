@@ -86,8 +86,13 @@ export const SWAP_TOKENS: Record<string, { address: Address; decimals: number }>
 /** Notional USD cap per swap (defense in depth), read from the quote's amountUSD. */
 export const SWAP_CAP_USD = 50;
 
-/** Claude model (via Vercel AI Gateway) used by Ignis and its sub-agents. */
-export const AGENT_MODEL = "anthropic/claude-sonnet-4.6";
+/**
+ * Claude model (via Vercel AI Gateway) used by Ignis and its sub-agents. Env-tunable so the
+ * latency/quality trade-off can be flipped without a code change: benchmarks put
+ * claude-haiku-4.5 at roughly half the time-to-first-token of sonnet-4.6 (~1.4s vs ~1.8–6s)
+ * and steadier — a real win for a voice-first app reading short spoken lines aloud.
+ */
+export const AGENT_MODEL = process.env.AGENT_MODEL ?? "anthropic/claude-sonnet-4.6";
 
 /** ETH the minter seeds a user's Ignis at identity-claim time (covers ERC-8004 + text record). */
 export const IGNIS_GAS_SEED = "0.02"; // in ETH
