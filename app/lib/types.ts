@@ -168,4 +168,6 @@ export interface ExecuteResponse {
   ok: boolean;
   hash?: string;
   error?: string;
+  /** Chain id the tx ran on, so the UI links to the right block explorer (Base vs L1 vs bridge src). */
+  chainId?: number;
 }

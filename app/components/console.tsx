@@ -7,7 +7,7 @@
  */
 import { useState } from "react";
 import { useDaemon } from "../lib/daemon-client";
-import { explorerTx } from "../lib/chain";
+import { explorerTxUrl, explorerName } from "../lib/chain";
 import type { DaemonState } from "../lib/types";
 
 const STATE_COLOR: Record<DaemonState, string> = {
@@ -92,12 +92,12 @@ export function Console() {
         <div className="text-xs">
           {txResult.ok ? (
             <a
-              href={explorerTx(txResult.hash!)}
+              href={explorerTxUrl(txResult.hash!, txResult.chainId)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-emerald-400 hover:underline"
             >
-              ✓ tx {txResult.hash?.slice(0, 14)}… (view on Etherscan)
+              ✓ tx {txResult.hash?.slice(0, 14)}… (view on {explorerName(txResult.chainId)})
             </a>
           ) : (
             <span className="text-red-400">✗ {txResult.error}</span>

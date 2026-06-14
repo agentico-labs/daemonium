@@ -148,3 +148,22 @@ export const explorerTx = (hash: string) => `https://etherscan.io/tx/${hash}`;
 export const explorerAddress = (addr: string) => `https://etherscan.io/address/${addr}`;
 export const defiExplorerTx = (hash: string) => `https://basescan.org/tx/${hash}`;
 export const defiExplorerAddress = (addr: string) => `https://basescan.org/address/${addr}`;
+
+/**
+ * Chain-aware explorer lookup — so a tx links to the chain it ACTUALLY ran on: identity/spawn on
+ * L1 → Etherscan, sends/swaps/zaps on Base → Basescan, a bridge's source on its own chain.
+ */
+const EXPLORERS: Record<number, { name: string; base: string }> = {
+  1: { name: "Etherscan", base: "https://etherscan.io" },
+  8453: { name: "Basescan", base: "https://basescan.org" },
+  42161: { name: "Arbiscan", base: "https://arbiscan.io" },
+  10: { name: "OP Explorer", base: "https://optimistic.etherscan.io" },
+  137: { name: "Polygonscan", base: "https://polygonscan.com" },
+};
+const explorerFor = (chainId?: number) =>
+  (chainId ? EXPLORERS[chainId] : undefined) ?? EXPLORERS[IDENTITY_CHAIN_ID];
+/** Tx-link URL on the chain the tx ran on; defaults to L1 (Etherscan) when the chain is unknown. */
+export const explorerTxUrl = (hash: string, chainId?: number) =>
+  `${explorerFor(chainId).base}/tx/${hash}`;
+/** Display name of that explorer ("Basescan", "Etherscan", …), for the link copy. */
+export const explorerName = (chainId?: number) => explorerFor(chainId).name;

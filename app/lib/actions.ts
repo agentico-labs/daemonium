@@ -21,6 +21,7 @@ import {
   ETH_SEND_CAP,
   agentCardUri,
   ENS_ONCHAIN_MINTING,
+  IDENTITY_CHAIN_ID,
   DEFI_CHAIN,
   DEFI_CHAIN_ID,
   DEFI_RPC_URL,
@@ -65,6 +66,25 @@ const BRIDGE_VIEM_CHAINS: Record<number, Chain> = {
 };
 
 export async function executeProposal(card: ProposalCard): Promise<ExecuteResponse> {
+  const result = await runAction(card);
+  // Tag the chain the tx actually ran on, so the UI links to the right block explorer
+  // (value actions broadcast on Base, identity/spawn on L1, a bridge on its source chain).
+  return result.hash ? { ...result, chainId: chainIdForAction(card) } : result;
+}
+
+/** Which chain a confirmed action's tx lands on. */
+function chainIdForAction(card: ProposalCard): number {
+  switch (card.details.action) {
+    case "spawn_subagent":
+      return IDENTITY_CHAIN_ID; // ENS subname + ERC-8004 register live on Ethereum L1
+    case "lifi_bridge":
+      return card.details.fromChainId; // the source-chain tx we actually broadcast
+    default:
+      return DEFI_CHAIN_ID; // send_usdc / send_eth / swap / lifi_zap all run on Base
+  }
+}
+
+async function runAction(card: ProposalCard): Promise<ExecuteResponse> {
   switch (card.details.action) {
     case "send_usdc":
       return sendUsdc(card.agent, card.details);
@@ -238,8 +258,12 @@ async function lifiZap(agent: string, details: LifiZapDetails): Promise<ExecuteR
       return { ok: false, error: `LI.FI compile ${result.status}: ${reason}` };
     }
 
-    // Notional cap (defense in depth) from the compile's price impact.
-    const usd = result.priceImpact?.inputValueUsd ?? 0;
+    // Notional cap (defense in depth) from the compile's price impact. Fail CLOSED: a missing
+    // USD value means we can't prove we're under the cap, so refuse rather than wave it through.
+    const usd = result.priceImpact?.inputValueUsd;
+    if (usd == null || !Number.isFinite(usd)) {
+      return { ok: false, error: "LI.FI compile returned no USD value; refusing to bypass the cap" };
+    }
     if (usd > LIFI_CAP_USD) {
       return { ok: false, error: `Flow notional $${usd.toFixed(2)} exceeds the $${LIFI_CAP_USD} cap` };
     }
@@ -317,7 +341,11 @@ async function lifiBridge(agent: string, details: LifiBridgeDetails): Promise<Ex
       toAddress: addr,
     });
 
-    const usd = Number(quote.estimate?.fromAmountUSD ?? "0");
+    // Fail CLOSED: a missing USD value means we can't prove we're under the cap.
+    const usd = quote.estimate?.fromAmountUSD != null ? Number(quote.estimate.fromAmountUSD) : NaN;
+    if (!Number.isFinite(usd)) {
+      return { ok: false, error: "Bridge quote returned no USD value; refusing to bypass the cap" };
+    }
     if (usd > LIFI_CAP_USD) {
       return { ok: false, error: `Bridge notional $${usd} exceeds the $${LIFI_CAP_USD} cap` };
     }

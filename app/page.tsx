@@ -18,7 +18,7 @@ import { useMic } from './lib/useMic';
 import { useOnboarding } from './lib/useOnboarding';
 import { useProactiveWatch } from './lib/useProactiveWatch';
 import { DEFAULT_VOICE_ID } from './lib/voices';
-import { explorerTx } from './lib/chain';
+import { explorerTxUrl, explorerName } from './lib/chain';
 
 export default function Home() {
   const d = useFlameDaemon();
@@ -224,17 +224,17 @@ function SummonGate({ onSummon }: { onSummon: () => void }) {
 function TxLine({
   result,
 }: {
-  result: { ok: boolean; hash?: string; error?: string };
+  result: { ok: boolean; hash?: string; error?: string; chainId?: number };
 }) {
   if (result.ok && result.hash) {
     return (
       <a
-        href={explorerTx(result.hash)}
+        href={explorerTxUrl(result.hash, result.chainId)}
         target="_blank"
         rel="noopener noreferrer"
         className="text-[12px] text-emerald-400/90 hover:underline"
       >
-        ✓ transaction confirmed — view on Etherscan
+        ✓ transaction confirmed — view on {explorerName(result.chainId)}
       </a>
     );
   }
