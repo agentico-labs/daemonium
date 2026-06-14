@@ -28,11 +28,15 @@ const queryClient = new QueryClient();
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <DynamicContextProvider
+      theme="dark"
       settings={{
         environmentId:
           process.env.NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID ??
           "bbd27798-ec7d-4aa5-ba43-694d10a6baf9",
         walletConnectors: [EthereumWalletConnectors],
+        // Brand the modal as Ignis; the dark base is the `theme` prop above, and
+        // the flame accent + radius come from the .dynamic-shadow-dom rule in globals.css.
+        appName: "Ignis",
       }}
     >
       <WagmiProvider config={config}>

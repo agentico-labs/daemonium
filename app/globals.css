@@ -41,6 +41,20 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Dynamic auth modal — pull its shadow-DOM theme toward Ignis: a warm flame
+   accent over the dark base (the dark base itself comes from settings.theme).
+   CSS custom properties inherit across the shadow boundary, so the
+   .dynamic-shadow-dom host is Dynamic's recommended place to override them. */
+.dynamic-shadow-dom {
+  --dynamic-brand-primary-color: #ff7a18;
+  --dynamic-connect-button-background: #ff7a18;
+  --dynamic-connect-button-color: #050505;
+  --dynamic-border-radius: 14px;
+  --dynamic-font-family-primary:
+    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+}
+
 @keyframes breathe {
   0%,
   100% {
