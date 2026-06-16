@@ -34,7 +34,7 @@ async function postHandler(req: Request) {
   }
 
   // Look up WITHOUT consuming — so a wrong-owner or losing-race tap can't burn a valid proposal.
-  const entry = peekExecution(body.executionId);
+  const entry = await peekExecution(body.executionId);
   if (!entry) {
     return Response.json(
       { ok: false, error: "Unknown or already-used executionId" },
@@ -45,9 +45,15 @@ async function postHandler(req: Request) {
   if (entry.userId !== userId) {
     return Response.json({ ok: false, error: "Not your proposal" }, { status: 403 });
   }
-  // Single-use: consume it now, synchronously (no await before this), so a double-tap can't
-  // double-execute — but only AFTER the owner check, so a wrong caller never consumes it.
-  consumeExecution(body.executionId);
+  // Single-use: consume atomically (GETDEL) AFTER the owner check. Only the caller that actually
+  // removes it proceeds, so a double-tap can't double-execute and a wrong caller never burns it.
+  const won = await consumeExecution(body.executionId);
+  if (!won) {
+    return Response.json(
+      { ok: false, error: "Unknown or already-used executionId" },
+      { status: 404 },
+    );
+  }
 
   const result = await executeProposal(entry.card);
   return Response.json(result, { status: result.ok ? 200 : 500 });

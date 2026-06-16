@@ -144,7 +144,7 @@ export function buildTools({
         }
         if (!resolved) return { proposed: false, error: `Could not resolve recipient "${to}"` };
 
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "send_usdc",
             agent: selfKey,
@@ -191,7 +191,7 @@ export function buildTools({
         }
         if (!resolved) return { proposed: false, error: `Could not resolve recipient "${to}"` };
 
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "send_eth",
             agent: selfKey,
@@ -244,7 +244,7 @@ export function buildTools({
         } catch {
           /* no route / quote unavailable — still propose; executor surfaces the error */
         }
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "swap",
             agent: selfKey,
@@ -309,7 +309,7 @@ export function buildTools({
         } catch {
           /* no route / compile error — still propose; executor surfaces the error */
         }
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "lifi_zap",
             agent: selfKey,
@@ -375,7 +375,7 @@ export function buildTools({
         } catch {
           /* no route — still propose; executor surfaces the error */
         }
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "lifi_bridge",
             agent: selfKey,
@@ -411,7 +411,7 @@ export function buildTools({
       }),
       execute: async ({ label, purpose }) => {
         const childKey = `${label}.${selfKey}`;
-        const card = createExecution(
+        const card = await createExecution(
           {
             action: "spawn_subagent",
             agent: selfKey,

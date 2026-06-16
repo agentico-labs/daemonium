@@ -85,3 +85,29 @@ export async function kvSet(ns: string, field: string, value: unknown): Promise<
     await writeFileNs(ns, data);
   });
 }
+
+/* ── Single string keys with TTL + atomic take ──────────────────────────────────────────────
+ * For short-lived, single-use values (e.g. pending confirm-proposals) that must be visible
+ * ACROSS serverless instances. Redis-only — callers fall back to in-memory when kvBackend() is
+ * "file" (local single process), so these throw rather than silently no-op. */
+const strKey = (key: string) => `daemon:${key}`;
+
+/** Set a string value with a TTL (seconds). */
+export async function kvSetEx(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  if (!useRedis) throw new Error("kvSetEx requires Redis (REDIS_URL)");
+  await redis().set(strKey(key), JSON.stringify(value), "EX", ttlSeconds);
+}
+
+/** Read a string value without deleting it. */
+export async function kvGetStr<T>(key: string): Promise<T | undefined> {
+  if (!useRedis) throw new Error("kvGetStr requires Redis (REDIS_URL)");
+  const r = await redis().get(strKey(key));
+  return r == null ? undefined : (JSON.parse(r) as T);
+}
+
+/** Atomically read-and-delete (GETDEL) — the single-use primitive. undefined if already gone. */
+export async function kvGetDel<T>(key: string): Promise<T | undefined> {
+  if (!useRedis) throw new Error("kvGetDel requires Redis (REDIS_URL)");
+  const r = (await redis().call("GETDEL", strKey(key))) as string | null;
+  return r == null ? undefined : (JSON.parse(r) as T);
+}

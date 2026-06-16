@@ -34,7 +34,7 @@ async function postHandler(req: Request) {
     return Response.json({ error: "Pick a handle first", needsHandle: true }, { status: 409 });
   }
 
-  const card = createExecution(
+  const card = await createExecution(
     {
       action: "send_usdc",
       agent,
