@@ -132,12 +132,26 @@ export async function getSessionSignerAddress(agentKey: string): Promise<Address
   return account.address;
 }
 
+/** Thrown when the UserOp failed at the SEND step (bundler rejected it, nothing broadcast). The
+ *  caller can safely reinstate/retry the proposal. Errors AFTER this (receipt wait) are NOT tagged,
+ *  because the UserOp may already be on-chain — retrying those could double-spend. */
+export class PreBroadcastError extends Error {
+  readonly preBroadcast = true as const;
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.cause = cause;
+  }
+}
+
 /**
  * AUTONOMY path: submit `calls` as a single UserOp on the user's smart account, signed by the
  * agent's GRANTED session key. `approvalBlob` is the serialized permission account the user signed
  * (serializePermissionAccount, client-side); we rebuild it with the agent's MPC signer and submit.
- * On-chain policy (caps/targets/expiry) is enforced by the account — an out-of-policy call reverts
- * at validation regardless of anything here. Returns the broadcast tx hash.
+ *
+ * NOTE on limits: the granted permission is a SUDO policy bounded ON-CHAIN only by a gas allowance +
+ * expiry (CallPolicy can't express "any recipient", which native ETH sends need). Per-tx value caps
+ * and the maxUsdc the user chose are enforced SERVER-SIDE (action-calls + the execute route), not by
+ * the account. Returns the broadcast tx hash.
  */
 export async function submitWithSessionKey(opts: {
   approvalBlob: string;
@@ -169,9 +183,16 @@ export async function submitWithSessionKey(opts: {
     },
   });
 
-  const userOpHash = await kernelClient.sendUserOperation({
-    calls: opts.calls.map((c) => ({ to: c.to, data: c.data, value: c.value ?? 0n })),
-  });
+  // Send (pre-broadcast). A failure here means nothing landed → safe for the caller to retry.
+  let userOpHash: Hex;
+  try {
+    userOpHash = await kernelClient.sendUserOperation({
+      calls: opts.calls.map((c) => ({ to: c.to, data: c.data, value: c.value ?? 0n })),
+    });
+  } catch (err) {
+    throw new PreBroadcastError(err);
+  }
+  // Receipt wait — if THIS throws, the UserOp may already be mined, so it is NOT a PreBroadcastError.
   const receipt = await kernelClient.waitForUserOperationReceipt({ hash: userOpHash });
   return receipt.receipt.transactionHash;
 }

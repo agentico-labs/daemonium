@@ -1,10 +1,9 @@
 /**
- * Completion of a CO-SIGN action. After the client co-signs the UserOp with the user's embedded
- * wallet and submits it (the on-chain effect already happened — the user signed it), it POSTs the
- * resulting tx hash here. We verify the caller owns the proposal, then atomically consume it
- * (single-use). This records the outcome and retires the proposal; it grants nothing on its own.
+ * Completion of a CO-SIGN action. The proposal was already consumed (single-use) at /execute when
+ * the cosign calls were issued, and the client has co-signed + broadcast the UserOp itself — so the
+ * on-chain effect already happened. This endpoint just records the client-reported outcome for
+ * UI/telemetry; it grants nothing on-chain, so it only needs auth.
  */
-import { peekExecution, consumeExecution } from "@/app/lib/executions";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import type { ExecuteResponse } from "@/app/lib/types";
 import { withRoute } from "@/app/lib/observe";
@@ -23,9 +22,8 @@ interface CompleteRequest {
 export const POST = withRoute("execute-complete", postHandler);
 
 async function postHandler(req: Request) {
-  let userId: string;
   try {
-    ({ userId } = await verifyUser(req));
+    await verifyUser(req);
   } catch (err) {
     const status = err instanceof AuthError ? err.status : 401;
     return Response.json({ ok: false, error: err instanceof Error ? err.message : "Unauthorized" }, { status });
@@ -36,17 +34,10 @@ async function postHandler(req: Request) {
     return Response.json({ ok: false, error: "executionId required" }, { status: 400 });
   }
 
-  const entry = await peekExecution(body.executionId);
-  if (!entry) {
-    return Response.json({ ok: false, error: "Unknown or already-used executionId" }, { status: 404 });
-  }
-  if (entry.userId !== userId) {
-    return Response.json({ ok: false, error: "Not your proposal" }, { status: 403 });
-  }
-  if (!(await consumeExecution(body.executionId))) {
-    return Response.json({ ok: false, error: "Unknown or already-used executionId" }, { status: 404 });
-  }
-
+  // The proposal was already CONSUMED at /execute (the cosign branch claims it single-use before
+  // returning calls), so there's nothing to look up or consume here — this endpoint just records
+  // the client-reported outcome for UI/telemetry. It grants nothing on-chain (the client already
+  // co-signed + broadcast), so it only needs auth, not an ownership re-check against the store.
   const res: ExecuteResponse = {
     ok: body.ok ?? Boolean(body.hash),
     hash: body.hash,

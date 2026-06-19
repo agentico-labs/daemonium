@@ -39,6 +39,26 @@ export interface DaemonUser {
   /** Dynamic userId (JWT `sub`) — the stable per-user key. */
   userId: string;
   email?: string;
+  /** Blockchain addresses verified in this session (from the JWT's `verified_credentials`),
+   *  lowercased. Used to bind a claimed smart-account owner EOA to a wallet the caller controls. */
+  wallets: string[];
+}
+
+/** Pull lowercased blockchain addresses out of a Dynamic JWT's `verified_credentials`. */
+function walletsFromPayload(payload: Record<string, unknown>): string[] {
+  const creds = payload["verified_credentials"];
+  if (!Array.isArray(creds)) return [];
+  const out: string[] = [];
+  for (const c of creds) {
+    if (c && typeof c === "object") {
+      const addr = (c as { address?: unknown }).address;
+      const format = (c as { format?: unknown }).format;
+      if (typeof addr === "string" && (format === undefined || format === "blockchain")) {
+        out.push(addr.toLowerCase());
+      }
+    }
+  }
+  return out;
 }
 
 function bearer(req: Request): string {
@@ -73,5 +93,6 @@ export async function verifyUser(req: Request): Promise<DaemonUser> {
   return {
     userId: payload.sub,
     email: typeof payload.email === "string" ? payload.email : undefined,
+    wallets: walletsFromPayload(payload as Record<string, unknown>),
   };
 }
