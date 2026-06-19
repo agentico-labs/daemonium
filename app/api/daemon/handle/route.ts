@@ -60,8 +60,9 @@ export const POST = withRoute("handle", postHandler);
 
 async function postHandler(req: Request) {
   let userId: string;
+  let wallets: string[];
   try {
-    ({ userId } = await user(req));
+    ({ userId, wallets } = await user(req));
   } catch (err) {
     return authFail(err);
   }
@@ -79,6 +80,16 @@ async function postHandler(req: Request) {
     return Response.json({ error: "ownerEoa (wallet address) required" }, { status: 400 });
   }
   const ownerEoa = rawOwner as Address;
+
+  // SECURITY: bind the owner EOA to a wallet verified in THIS session, so a caller can't make their
+  // smart account (and the funding hint the UI shows) owned by an address they don't control. If the
+  // session carries verified wallets, the owner must be one of them.
+  if (wallets.length > 0 && !wallets.includes(ownerEoa.toLowerCase())) {
+    return Response.json(
+      { error: "ownerEoa must be a wallet verified in your session" },
+      { status: 403 },
+    );
+  }
 
   const claimed = await claimHandle(userId, raw);
   if (!claimed.ok) {

@@ -75,17 +75,20 @@ async function postHandler(req: Request) {
   } catch (err) {
     return authFail(err);
   }
-  const ensName = await resolveUserKey(userId);
-  if (!ensName) return Response.json({ error: "Not provisioned yet" }, { status: 409 });
+  const [ensName, sa] = await Promise.all([resolveUserKey(userId), getUserSmartAccount(userId)]);
+  if (!ensName || !sa) return Response.json({ error: "Not provisioned yet" }, { status: 409 });
+  const smartAccount = sa.smartAccount as Address;
 
   const body = (await req.json().catch(() => null)) as { hash?: string } | null;
   if (!body?.hash) return Response.json({ error: "hash required" }, { status: 400 });
 
-  // Read the mined receipt and parse the agentId from its logs — don't trust a client-sent id.
+  // Read the mined receipt and parse the agentId — don't trust a client-sent id, AND require the
+  // registration to belong to THIS user's smart account, so a client can't point us at an arbitrary
+  // tx hash carrying someone else's Registered event and record a foreign agentId.
   let agentId: string | undefined;
   try {
     const receipt = await identityClient.getTransactionReceipt({ hash: body.hash as Hex });
-    agentId = parseAgentIdFromLogs(receipt.logs);
+    agentId = parseAgentIdFromLogs(receipt.logs, smartAccount);
   } catch (err) {
     return Response.json(
       { error: `Could not read identity receipt: ${err instanceof Error ? err.message : err}` },
@@ -93,7 +96,10 @@ async function postHandler(req: Request) {
     );
   }
   if (!agentId) {
-    return Response.json({ error: "No ERC-8004 registration found in that tx" }, { status: 422 });
+    return Response.json(
+      { error: "No ERC-8004 registration for your smart account found in that tx" },
+      { status: 422 },
+    );
   }
 
   const wallet = await getWallet(ensName);

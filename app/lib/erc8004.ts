@@ -47,15 +47,17 @@ export function buildRegisterCall(agentURI: string): { to: Address; data: Hex; v
 }
 
 /** Parse the minted agentId from a register tx/UserOp receipt's logs (Registered, else mint
- *  Transfer). Returns undefined if neither is present. Same logic as registerIdentity, reusable
- *  for the SA-co-signed path where the client submits and the server reads the receipt by hash. */
-export function parseAgentIdFromLogs(logs: Log[]): string | undefined {
+ *  Transfer). Pass `owner` (the smart account that should hold the NFT) to require the registration
+ *  belongs to it — without this filter, a client-supplied receipt could carry SOMEONE ELSE'S
+ *  Registered event and we'd record the wrong agentId. Returns undefined if no matching event. */
+export function parseAgentIdFromLogs(logs: Log[], owner?: Address): string | undefined {
+  const matchesOwner = (a?: string) => !owner || a?.toLowerCase() === owner.toLowerCase();
   const registered = parseEventLogs({ abi: identityRegistryAbi, logs, eventName: "Registered" });
-  let agentId = registered[0]?.args.agentId;
+  let agentId = registered.find((l) => matchesOwner(l.args.owner))?.args.agentId;
   if (agentId === undefined) {
-    const mints = parseEventLogs({ abi: identityRegistryAbi, logs, eventName: "Transfer" }).filter(
-      (l) => l.args.from === ZERO,
-    );
+    const mints = parseEventLogs({ abi: identityRegistryAbi, logs, eventName: "Transfer" })
+      .filter((l) => l.args.from === ZERO)
+      .filter((l) => matchesOwner(l.args.to));
     agentId = mints[0]?.args.tokenId;
   }
   return agentId?.toString();

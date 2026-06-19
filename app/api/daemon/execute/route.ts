@@ -3,20 +3,27 @@
  * Dynamic token); this route verifies the caller owns the proposal, then decides how it runs:
  *
  *   • spawn_subagent → executed server-side (provisioning, not a fund move), result returned inline.
- *   • value action + an active session-key grant for the acting agent → the server submits the
- *     UserOp with that session key (autonomy), bounded on-chain by the grant; result returned inline.
- *   • value action, no grant → "cosign": the server returns the encoded calls (built from the
- *     STORED proposal — never client input); the client co-signs the UserOp with the user's embedded
- *     wallet and submits, then calls /execute/complete to record + consume the proposal.
+ *   • value action + an active session-key grant covering this action → the server submits the
+ *     UserOp with that session key (autonomy); result returned inline.
+ *   • value action, no grant (or over the grant's cap) → "cosign": the server returns the encoded
+ *     calls (built from the STORED proposal — never client input); the client co-signs with the
+ *     embedded wallet and submits.
  *
- * The server can no longer move a user's funds on its own: value actions require either the user's
- * signature (co-sign) or a session key whose limits the user signed and the chain enforces.
+ * SINGLE-USE: a proposal is consumed (atomic GETDEL) BEFORE any on-chain effect — the cosign branch
+ * claims it before returning calls (so it can't be prepared twice → no double-submit), and the
+ * autonomy branch claims it before submitting (reinstating it only on a pre-broadcast failure so a
+ * transient bundler error doesn't burn a still-valid proposal). The server can't move funds on its
+ * own: value needs either the user's signature (co-sign) or a session key the user granted.
  */
-import { peekExecution, consumeExecution } from "@/app/lib/executions";
+import {
+  peekExecution,
+  consumeExecution,
+  reinstateExecution,
+} from "@/app/lib/executions";
 import { executeProposal } from "@/app/lib/actions";
 import { buildValueCalls } from "@/app/lib/action-calls";
-import { submitWithSessionKey } from "@/app/lib/smart-account";
-import { getActiveGrant } from "@/app/lib/session-grants";
+import { submitWithSessionKey, PreBroadcastError } from "@/app/lib/smart-account";
+import { getActiveGrant, type SessionGrant } from "@/app/lib/session-grants";
 import { getUserSmartAccount } from "@/app/lib/handles";
 import { verifyUser, AuthError } from "@/app/lib/auth";
 import type { Address } from "viem";
@@ -28,6 +35,22 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export const POST = withRoute("execute", postHandler);
+
+/** Does this action exceed the user-chosen cap on the grant? Enforces the grant's `maxUsdc` for
+ *  USDC sends (the clear, common case) server-side — the on-chain sudo policy can't. Over the cap →
+ *  the action falls back to co-sign so the user signs the larger amount themselves. */
+function exceedsGrantCap(
+  card: { details: { action: string; amount?: string } },
+  grant: SessionGrant,
+): boolean {
+  const max = grant.policy.maxUsdc;
+  if (max == null) return false;
+  if (card.details.action === "send_usdc") {
+    const amt = Number(card.details.amount);
+    return Number.isFinite(amt) && amt > max;
+  }
+  return false;
+}
 
 async function postHandler(req: Request) {
   let userId: string;
@@ -82,11 +105,12 @@ async function postHandler(req: Request) {
     return Response.json(res, { status: 400 });
   }
 
-  // Autonomy: an active grant for the acting agent ON THIS ACTION'S CHAIN → server signs with the
-  // session key. Grants are per-chain, so a Base grant won't authorize a mainnet action (and vice
-  // versa) — that falls back to co-sign below.
+  // Autonomy: an active grant for the acting agent ON THIS ACTION'S CHAIN, AND within the grant's
+  // user-chosen cap → server signs with the session key. Grants are per-chain (a Base grant won't
+  // authorize a mainnet action). Over-cap or no grant → fall through to co-sign so the user signs it.
   const grant = await getActiveGrant(userId, card.agent, calls.chainId);
-  if (grant) {
+  if (grant && !exceedsGrantCap(card, grant)) {
+    // Claim atomically BEFORE submitting so a double-tap can't double-submit.
     if (!(await consumeExecution(body.executionId))) {
       return Response.json({ ok: false, error: "Unknown or already-used executionId" }, { status: 404 });
     }
@@ -100,13 +124,20 @@ async function postHandler(req: Request) {
       const res: PrepareResponse = { mode: "server", ok: true, hash, chainId: calls.chainId };
       return Response.json(res, { status: 200 });
     } catch (err) {
+      // Pre-broadcast failure (bundler rejected, nothing landed) → put the proposal back so the user
+      // can retry. A later failure (receipt wait) is NOT reinstated: the UserOp may be on-chain.
+      if (err instanceof PreBroadcastError) await reinstateExecution(entry);
       const res: PrepareResponse = { mode: "server", ok: false, error: err instanceof Error ? err.message : String(err), chainId: calls.chainId };
       return Response.json(res, { status: 500 });
     }
   }
 
-  // Default: co-sign. Return the calls for the client to sign; DON'T consume yet (the client
-  // consumes via /execute/complete once its UserOp lands, so a rejected signature can be retried).
+  // Default: co-sign. CLAIM the proposal now (single-use) BEFORE handing the client signable calls,
+  // so it can't be prepared again and double-submitted. A rejected signature means the proposal is
+  // spent and the user re-asks — the safe direction (never double-spend).
+  if (!(await consumeExecution(body.executionId))) {
+    return Response.json({ ok: false, error: "Unknown or already-used executionId" }, { status: 404 });
+  }
   const res: PrepareResponse = {
     mode: "cosign",
     executionId: body.executionId,

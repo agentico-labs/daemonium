@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import { kvBackend, kvSetEx, kvGetStr, kvGetDel } from "./kv";
 import type { ProposalCard, ProposalDetails, DaemonAction } from "./types";
 
-interface Entry {
+export interface Entry {
   card: ProposalCard;
   userId: string;
 }
@@ -57,4 +57,12 @@ export async function peekExecution(executionId: string): Promise<Entry | undefi
 export async function consumeExecution(executionId: string): Promise<boolean> {
   if (useRedis) return (await kvGetDel<Entry>(keyOf(executionId))) !== undefined;
   return pending.delete(executionId);
+}
+
+/** Put a consumed proposal back (same TTL) — used only when an autonomy submit fails BEFORE any
+ *  on-chain broadcast, so the user can retry without us having burned a still-valid proposal. Never
+ *  call this after a possible broadcast (it would re-enable a double-spend). */
+export async function reinstateExecution(entry: Entry): Promise<void> {
+  if (useRedis) await kvSetEx(keyOf(entry.card.executionId), entry, TTL_SECONDS);
+  else pending.set(entry.card.executionId, entry);
 }
