@@ -55,6 +55,9 @@ export interface UseVoice {
   getAmplitude: () => number;
   /** Arm/resume the AudioContext from inside a user gesture (required on iOS Safari). */
   unlock: () => void;
+  /** Cut Ignis off NOW: stop playback and drop the queue, and stay silent for the rest of this
+   *  turn (the caption freezes at the line reached). Used for tap-to-interrupt / ending. */
+  interrupt: () => void;
 }
 
 /** Lazily create the shared AudioContext (one per page is plenty). */
@@ -114,6 +117,9 @@ export function useVoice({
   const queueRef = useRef<QueueItem[]>([]);
   const playingRef = useRef(false);
   const turnRef = useRef(0);
+  // Set by interrupt(): suppresses any remaining speech for the current turn until the next turn
+  // begins (the busy rising edge clears it).
+  const interruptedRef = useRef(false);
   // resolve() of the play promise currently awaiting a source — called on interrupt so the
   // playLoop unwinds instead of hanging forever (which would pin its AudioBuffer).
   const resolveCurrentRef = useRef<(() => void) | null>(null);
@@ -287,14 +293,34 @@ export function useVoice({
     setCaption("");
   }, [stopSource]);
 
+  /** Tap-to-interrupt: silence Ignis at once and stop speaking the rest of this turn. Unlike
+   *  reset(), the caption is LEFT as-is (the line reached) and the cursor isn't rewound — we just
+   *  stop; interruptedRef keeps the segmentation effect from enqueuing anything more until the
+   *  next turn begins. */
+  const interrupt = useCallback(() => {
+    interruptedRef.current = true;
+    turnRef.current += 1; // supersede any in-flight playLoop
+    for (const it of queueRef.current) it.controller.abort();
+    queueRef.current = [];
+    stopSource();
+    playingRef.current = false;
+    setIsSpeaking(false);
+  }, [stopSource]);
+
   // Segment the streaming text into sentences and feed the voice. The sole trigger is the
   // (text, busy) pair; everything it touches is a ref or a stable callback.
   useEffect(() => {
     const wasBusy = prevBusyRef.current;
     prevBusyRef.current = busy;
 
-    // A rising busy edge means a fresh turn is starting — wipe the previous line.
-    if (busy && !wasBusy) reset();
+    // A rising busy edge means a fresh turn is starting — wipe the previous line and clear any
+    // interrupt latched on the turn that just ended.
+    if (busy && !wasBusy) {
+      interruptedRef.current = false;
+      reset();
+    }
+    // After an interrupt, stay silent for the rest of this turn (cleared on the next turn above).
+    if (interruptedRef.current) return;
 
     const full = text ?? "";
     // If the text isn't an extension of what we had, realign the cursor (turn boundary).
@@ -344,5 +370,5 @@ export function useVoice({
     };
   }, [stopSource]);
 
-  return { caption, isSpeaking, getAmplitude, unlock };
+  return { caption, isSpeaking, getAmplitude, unlock, interrupt };
 }
