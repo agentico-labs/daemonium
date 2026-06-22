@@ -86,6 +86,28 @@ export async function kvSet(ns: string, field: string, value: unknown): Promise<
   });
 }
 
+/**
+ * Read-modify-write one namespaced field under a process-local lock, so concurrent updates of the
+ * same field can't clobber each other. `mutate` receives the current value (or undefined when
+ * absent) and returns the value to store; it may throw to abort the write. The lock key defaults to
+ * `${ns}:${field}`, but can be overridden to join an existing resource lock — e.g. wallet records are
+ * also locked as `wallet:<label>` in dynamic-server, so wallet-store passes that same key. Process-
+ * local only; a multi-instance deploy would want a server-side atomic update. Centralizes the
+ * read-modify-write that wallet-store and memory used to hand-roll.
+ */
+export function kvUpdate<T>(
+  ns: string,
+  field: string,
+  mutate: (current: T | undefined) => T,
+  lockKey: string = `${ns}:${field}`,
+): Promise<T> {
+  return withLock(lockKey, async () => {
+    const next = mutate(await kvGet<T>(ns, field));
+    await kvSet(ns, field, next);
+    return next;
+  });
+}
+
 /* ── Single string keys with TTL + atomic take ──────────────────────────────────────────────
  * For short-lived, single-use values (e.g. pending confirm-proposals) that must be visible
  * ACROSS serverless instances. Redis-only — callers fall back to in-memory when kvBackend() is

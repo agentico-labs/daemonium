@@ -87,6 +87,7 @@ export function useFlameDaemon(): FlameDaemon {
     proposal,
     txResult,
     executingAction,
+    speakLine,
     sendPrompt,
     stopStream,
     confirm,
@@ -94,7 +95,9 @@ export function useFlameDaemon(): FlameDaemon {
   } = useDaemon();
 
   const busy = status === 'submitted' || status === 'streaming';
-  const caption = lastSpokenLine(messages);
+  // Normal replies voice themselves via the streamed message text; fall back to the server's
+  // `speak` line only when a turn produced no text (truncation/error) so it isn't left silent.
+  const caption = lastSpokenLine(messages) ?? speakLine;
   const thread = toThread(messages);
 
   return {
