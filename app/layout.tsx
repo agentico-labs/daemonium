@@ -17,7 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 // Open Graph / Twitter card images, the favicon, the app icon and the apple-touch icon are all
 // picked up automatically by Next from the files in app/ (opengraph-image.png, twitter-image.png,
 // favicon.ico, icon.png, apple-icon.png) and resolved against metadataBase — so they aren't
-// repeated here. (Regenerate them from the idle flame with `node scripts/gen-icons.mjs`.)
+// repeated here.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   // The browser-tab title is just "Daemonium" on every page (no per-page suffix/template).

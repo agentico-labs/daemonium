@@ -44,7 +44,8 @@ async function getHandler(req: Request) {
   }
 
   // Watch the user's SMART ACCOUNT — that's where funds land now (the agent's MPC address is just
-  // a session-key signer). Fall back to the agent address for legacy accounts without an SA.
+  // a session-key signer). Fall back to the agent address when no SA is bound yet (legacy or
+  // mid-provisioning).
   const watchAddress = (wallet.ownerSmartAccount ?? wallet.address) as `0x${string}`;
 
   const since = sinceParam ? BigInt(sinceParam) : undefined;

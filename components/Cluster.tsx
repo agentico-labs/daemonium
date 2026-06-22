@@ -9,7 +9,8 @@
  * its element (see lib/cluster · ELEMENTS). Tapping an empty `+` slot calls onSlotTap, which
  * the page turns into the summon ritual; while a slot is being summoned into, it pulses.
  *
- * Roster + spells are MOCK for now (props), fed from lib/cluster — swap for a live feed later.
+ * Roster + spells arrive as props (the page feeds them live from useCluster → /api/daemon/cluster),
+ * mapped into lib/cluster's view-model shapes.
  */
 import type { CSSProperties } from 'react';
 import { FlameImage } from '@/components/FlameImage';

@@ -4,9 +4,9 @@
  */
 
 // 3–32 chars, lowercase alphanumerics + hyphen, no leading/trailing hyphen. ENS-label-safe.
-export const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/;
+const HANDLE_RE = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/;
 
-export const RESERVED = new Set([
+const RESERVED = new Set([
   "admin", "minter", "daemonium", "ignis", "www", "api", "root", "system", "dynamic",
 ]);
 

@@ -84,15 +84,6 @@ async function sudoKernelClient(walletClient: ConnectedWalletClient, chainId: nu
   });
 }
 
-/** The deterministic smart-account address for the connected owner (matches the server's). */
-export async function smartAccountAddress(
-  walletClient: ConnectedWalletClient,
-  chainId: number,
-): Promise<Address> {
-  const kernelClient = await sudoKernelClient(walletClient, chainId);
-  return kernelClient.account.address;
-}
-
 /**
  * CO-SIGN: submit `calls` as one UserOp the user's embedded wallet signs. Returns the broadcast tx
  * hash once the UserOp is mined. Throws if the wallet rejects or the bundler fails.

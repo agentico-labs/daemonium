@@ -1,11 +1,9 @@
 /**
  * Presentational view-models for the Cluster screen + Summon ritual.
  *
- * The seam (app/lib/types.ts) stays frozen — these are UI-only shapes. For now the
- * roster + spells are MOCK data (the design handoff's placeholder values), the same
- * way the flame UI built against `mockAgentRun` before the live agent existed. When a
- * "list my cluster / list spells" endpoint exists, feed it into the same shapes and the
- * components don't change.
+ * The seam (app/lib/types.ts) stays frozen — these are UI-only shapes. The roster +
+ * spells are fed live from GET /api/daemon/cluster (via useCluster), mapped into these
+ * shapes by toClusterDaemons / toSpells below; the components don't care about the source.
  *
  * The elemental color system (the heart of the design): every dæmon is the SAME flame
  * webp (public/daemon/idle/full.webp) recolored to its element via CSS `hue-rotate`.
@@ -128,7 +126,7 @@ export interface ClusterDaemon {
   elapsed: string;
 }
 
-export type SpellTone = 'ember' | 'ignis';
+type SpellTone = 'ember' | 'ignis';
 
 /** A live background task ("spell"). All threads are warm ember except Ignis's own. */
 export interface Spell {
@@ -139,8 +137,7 @@ export interface Spell {
   percent: number;
   description: string;
   tone: SpellTone;
-  /** Live state — running threads render an indeterminate shimmer instead of a percent fill.
-   *  Optional so the design-mock spells (no real lifecycle) still type-check. */
+  /** Live state — running threads render an indeterminate shimmer instead of a percent fill. */
   status?: 'running' | 'done' | 'failed';
 }
 
@@ -179,12 +176,12 @@ export interface ClusterResponse {
 
 /** Elements handed to sub-dæmons in roster order (Ignis is always fire, at the center). */
 const SUB_ELEMENTS: Element[] = ['blue', 'green', 'purple', 'blue', 'green'];
-export function elementForIndex(i: number): Element {
+function elementForIndex(i: number): Element {
   return SUB_ELEMENTS[i % SUB_ELEMENTS.length];
 }
 
 /** mm:ss for live durations, e.g. 42 → "0:42", 188 → "3:08". */
-export function formatElapsed(sec: number): string {
+function formatElapsed(sec: number): string {
   const s = Math.max(0, Math.floor(sec));
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, '0')}`;

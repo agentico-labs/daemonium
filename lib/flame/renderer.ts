@@ -3,7 +3,7 @@ import { FRAG_SRC, VERT_SRC } from './shaders';
 type GL = WebGLRenderingContext;
 
 /** The layer image URLs for one expression (core has cel frames for the face). */
-export interface FlameLayers {
+interface FlameLayers {
   core: string;
   tips: string;
   glow: string;
@@ -16,7 +16,7 @@ export interface FlameLayers {
 }
 
 /** What the component pushes when the state (or a debug slider) changes. */
-export interface FlameTargets {
+interface FlameTargets {
   distort: number;
   turbulence: number;
   ember: number;

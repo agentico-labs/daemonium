@@ -7,7 +7,7 @@
  * The three characters (alien / wizard / pirate) were made with ElevenLabs Voice Design and
  * persisted to permanent library voices. `alien-3` is the default.
  */
-export type VoiceCharacter = "Alien" | "Wizard" | "Pirate";
+type VoiceCharacter = "Alien" | "Wizard" | "Pirate";
 
 export interface VoiceOption {
   /** App-facing id sent in TtsRequest.voice and stored in the picker. */
@@ -19,7 +19,7 @@ export interface VoiceOption {
   elevenVoiceId: string;
 }
 
-export const VOICES: VoiceOption[] = [
+const VOICES: VoiceOption[] = [
   { id: "alien-1", label: "Alien 1", character: "Alien", elevenVoiceId: "NH6popEfbzjv2gskOww7" },
   { id: "alien-2", label: "Alien 2", character: "Alien", elevenVoiceId: "GPDPirLLJlIISyDC9HqJ" },
   { id: "alien-3", label: "Alien 3", character: "Alien", elevenVoiceId: "Uh56wCvSjKk4V1Pu9C7T" },
@@ -33,9 +33,6 @@ export const VOICES: VoiceOption[] = [
 
 /** The default voice id (Ignis speaks in this unless the user picks another). */
 export const DEFAULT_VOICE_ID = "alien-3";
-
-/** The character order the picker groups by. */
-export const VOICE_CHARACTERS: VoiceCharacter[] = ["Alien", "Wizard", "Pirate"];
 
 /** Resolve an app voice id to its option, falling back to the default. */
 export function resolveVoice(id?: string): VoiceOption {

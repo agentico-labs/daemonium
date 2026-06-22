@@ -47,7 +47,7 @@ export function SummonSheet({
     return () => clearTimeout(id);
   }, []);
 
-  // Esc / hardware-back closes the sheet (a recommended production affordance).
+  // Esc closes the sheet.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
