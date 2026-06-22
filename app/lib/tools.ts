@@ -18,6 +18,7 @@ import { getWallet } from "./wallet-store";
 import { createExecution } from "./executions";
 import { runSubagent } from "./subagent";
 import { startSpell, finishSpell } from "./spells";
+import { remember } from "./memory";
 import type { DaemonEvent } from "./types";
 
 export type Emit = (ev: DaemonEvent) => void;
@@ -313,7 +314,7 @@ export function buildTools({
         label: z.string().describe("An existing sub-agent label under you"),
         task: z.string().describe("The task to delegate"),
       }),
-      execute: async ({ label, task }) => {
+      execute: async ({ label, task }, { abortSignal }) => {
         const childKey = `${label}.${selfKey}`;
         const sub = await getWallet(childKey);
         if (!sub || sub.parent !== selfKey) {
@@ -323,16 +324,35 @@ export function buildTools({
         // Register a live spell so the Cluster screen shows this dæmon actually working.
         const spellId = startSpell(userId, { agent: label, title: task });
         try {
-          const summary = await runSubagent({ label, task });
+          // Thread the parent's abort signal down so a barge-in also stops the sub-agent's loop.
+          const summary = await runSubagent({ label, task, abortSignal });
           finishSpell(spellId, { ok: true, summary });
           emit({ type: "subagentResult", agent: label, summary });
           emit({ type: "state", state: "thinking" });
           return { agent: label, summary };
         } catch (err) {
+          // Return the failure to the model (like every other tool) instead of throwing, so a failed
+          // sub-research becomes a graceful spoken line rather than a dead turn.
           finishSpell(spellId, { ok: false });
           emit({ type: "state", state: "thinking" });
-          throw err;
+          return { error: err instanceof Error ? err.message : "Sub-agent failed" };
         }
+      },
+    }),
+
+    remember: tool({
+      description:
+        "Save something worth keeping about your human or your shared history — a preference, a " +
+        "fact about them, something that happened between you — so you can recall it in later " +
+        "sessions. Runs now; it's your own memory, so no confirmation is needed. Use it sparingly, " +
+        "for things that genuinely matter, not every passing detail.",
+      inputSchema: z.object({
+        text: z.string().max(500).describe("The thing to remember, in one plain sentence."),
+        kind: z.string().optional().describe('Loose category, e.g. "preference", "fact", "event".'),
+      }),
+      execute: async ({ text, kind }) => {
+        await remember(userId, { kind: kind ?? "note", text });
+        return { remembered: true, note: `Noted: ${text}` };
       },
     }),
   };
