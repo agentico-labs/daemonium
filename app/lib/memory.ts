@@ -12,8 +12,7 @@
  * don't change. Not for secrets (see `secrets.ts`). Not yet wired into the agent loop — that's Phase 1.
  */
 import "server-only";
-import { kvGet, kvSet } from "./kv";
-import { withLock } from "./lock";
+import { kvGet, kvUpdate } from "./kv";
 
 const NS = "memory";
 
@@ -33,16 +32,16 @@ export interface MemoryItem {
 }
 
 /**
- * Append a memory for a user. Read-modify-write under a per-user lock so concurrent appends can't
- * clobber each other — same approach as `wallet-store.appendChild` (process-local; a multi-instance
- * deploy would want an atomic list push, which the real store will provide).
+ * Append a memory for a user via the shared locked read-modify-write (`kvUpdate`), so concurrent
+ * appends can't clobber each other. Process-local; a multi-instance deploy would want a server-side
+ * atomic list push, which the real store will provide.
  */
-export function remember(userId: string, item: { kind: string; text: string }): Promise<void> {
-  return withLock(`memory:${userId}`, async () => {
-    const log = (await kvGet<MemoryItem[]>(NS, userId)) ?? [];
+export async function remember(userId: string, item: { kind: string; text: string }): Promise<void> {
+  await kvUpdate<MemoryItem[]>(NS, userId, (current) => {
+    const log = current ?? [];
     log.push({ at: new Date().toISOString(), kind: item.kind, text: item.text.slice(0, MAX_TEXT) });
     // Keep only the most recent MAX_ITEMS so the stored blob — and every future recall — stay bounded.
-    await kvSet(NS, userId, log.length > MAX_ITEMS ? log.slice(-MAX_ITEMS) : log);
+    return log.length > MAX_ITEMS ? log.slice(-MAX_ITEMS) : log;
   });
 }
 

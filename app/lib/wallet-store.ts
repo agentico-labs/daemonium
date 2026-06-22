@@ -10,8 +10,7 @@
  * JSON file for local dev. No JSON file is required to deploy.
  */
 import "server-only";
-import { kvGet, kvSet } from "./kv";
-import { withLock } from "./lock";
+import { kvGet, kvSet, kvUpdate } from "./kv";
 
 const NS = "wallets";
 
@@ -46,13 +45,15 @@ export function putWallet(w: StoredWallet): Promise<void> {
 export function updateWallet(label: string, patch: Partial<StoredWallet>): Promise<StoredWallet> {
   // Read-modify-write under a per-label lock so concurrent merges (e.g. children append) can't
   // lose updates. (Process-local; a multi-instance deploy would want an atomic field update.)
-  return withLock(`wallet:${label}`, async () => {
-    const existing = await kvGet<StoredWallet>(NS, label);
-    if (!existing) throw new Error(`No wallet for label "${label}"`);
-    const next = { ...existing, ...patch };
-    await kvSet(NS, label, next);
-    return next;
-  });
+  return kvUpdate<StoredWallet>(
+    NS,
+    label,
+    (existing) => {
+      if (!existing) throw new Error(`No wallet for label "${label}"`);
+      return { ...existing, ...patch };
+    },
+    `wallet:${label}`,
+  );
 }
 
 /**
@@ -62,14 +63,16 @@ export function updateWallet(label: string, patch: Partial<StoredWallet>): Promi
  * whose array is computed from a snapshot taken before the lock.
  */
 export function appendChild(parentLabel: string, childLabel: string): Promise<StoredWallet> {
-  return withLock(`wallet:${parentLabel}`, async () => {
-    const existing = await kvGet<StoredWallet>(NS, parentLabel);
-    if (!existing) throw new Error(`No wallet for label "${parentLabel}"`);
-    const children = existing.children.includes(childLabel)
-      ? existing.children
-      : [...existing.children, childLabel];
-    const next = { ...existing, children };
-    await kvSet(NS, parentLabel, next);
-    return next;
-  });
+  return kvUpdate<StoredWallet>(
+    NS,
+    parentLabel,
+    (existing) => {
+      if (!existing) throw new Error(`No wallet for label "${parentLabel}"`);
+      const children = existing.children.includes(childLabel)
+        ? existing.children
+        : [...existing.children, childLabel];
+      return { ...existing, children };
+    },
+    `wallet:${parentLabel}`,
+  );
 }
