@@ -29,7 +29,7 @@ export default function Home() {
   const { user, setShowAuthFlow } = useDynamicContext();
 
   // Character voice fed to the voice pipeline — the persisted choice, or the default. The
-  // picker UI is hidden, so it no longer changes at runtime (hydrated once from storage).
+  // picker UI was removed, so it no longer changes at runtime (hydrated once from storage).
   const [voiceId] = useState(() =>
     typeof window === 'undefined'
       ? DEFAULT_VOICE_ID
@@ -75,11 +75,12 @@ export default function Home() {
   // Continuous conversation: once we're conversing, reopen the mic for the next turn as soon as
   // the stage is clear — Ignis isn't speaking, no turn is in flight, and nothing awaits a tap.
   // The short delay debounces a one-render transient and gives a natural beat after Ignis stops.
+  const { recording: micRecording, transcribing: micTranscribing, start: micStart } = mic;
   useEffect(() => {
     if (!ready || !conversing) return;
     if (d.busy || voice.isSpeaking || d.proposal || d.executingAction) return;
-    if (mic.recording || mic.transcribing) return;
-    const t = window.setTimeout(() => mic.start(), 300);
+    if (micRecording || micTranscribing) return;
+    const t = window.setTimeout(() => micStart(), 300);
     return () => window.clearTimeout(t);
   }, [
     ready,
@@ -88,16 +89,19 @@ export default function Home() {
     voice.isSpeaking,
     d.proposal,
     d.executingAction,
-    mic.recording,
-    mic.transcribing,
-    mic.start,
+    micRecording,
+    micTranscribing,
+    micStart,
   ]);
 
   // Leaving the ready state ends any hands-free conversation so it can't silently auto-reopen the
-  // mic on a later re-entry.
-  useEffect(() => {
+  // mic on a later re-entry. Adjusted during render (on the changed `ready` value) rather than in
+  // an effect, per the Rules of React.
+  const [prevReady, setPrevReady] = useState(ready);
+  if (prevReady !== ready) {
+    setPrevReady(ready);
     if (!ready) setConversing(false);
-  }, [ready]);
+  }
 
   // The flame leads onboarding (it "thinks" while minting); the real mic drives the
   // `listening` overlay on an otherwise-idle flame.
@@ -233,7 +237,7 @@ export default function Home() {
             }}
           />
 
-          {/* ENS header + voice picker — only once provisioned */}
+          {/* ENS header — only once provisioned */}
           {ready && onb.ensName ? (
             <div className="mt-3 flex flex-none flex-col items-center gap-2">
               <ENSHeaderPill ensName={onb.ensName} onOpen={() => setPanelOpen(true)} />
@@ -365,8 +369,6 @@ const WORKING_VERB: Record<DaemonAction, string> = {
   send_usdc: 'Sending USDC',
   send_eth: 'Sending ETH',
   swap: 'Swapping',
-  lifi_zap: 'Depositing into the vault',
-  lifi_bridge: 'Bridging across chains',
   spawn_subagent: 'Forging the sub-dæmon',
 };
 

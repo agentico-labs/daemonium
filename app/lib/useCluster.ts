@@ -30,10 +30,7 @@ export function useCluster(opts: { enabled: boolean; rootLabel: string }): Clust
   const [view, setView] = useState<ClusterView>(EMPTY);
 
   useEffect(() => {
-    if (!enabled) {
-      setView(EMPTY);
-      return;
-    }
+    if (!enabled) return;
     let cancelled = false;
 
     const poll = async () => {
@@ -60,5 +57,7 @@ export function useCluster(opts: { enabled: boolean; rootLabel: string }): Clust
     };
   }, [enabled, rootLabel]);
 
-  return view;
+  // Surface EMPTY when disabled without storing it (no setState-in-effect); `view` is repopulated
+  // by the immediate poll when re-enabled.
+  return enabled ? view : EMPTY;
 }

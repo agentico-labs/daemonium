@@ -88,19 +88,24 @@ export function useOnboarding(enabled: boolean): Onboarding {
   const [pendingHandle, setPendingHandle] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // 1. Check whether this user already has a (fully provisioned) dæmon.
-  useEffect(() => {
+  // Reset onboarding state when disabled (e.g. sign-out). Adjusted during render on the changed
+  // `enabled` value rather than in an effect, per the Rules of React.
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+  if (prevEnabled !== enabled) {
+    setPrevEnabled(enabled);
     if (!enabled) {
       setStatus('checking');
       setEnsName(null);
       setError(null);
       setReservedHandle(null);
       setPendingHandle(null);
-      return;
     }
+  }
+
+  // 1. Check whether this user already has a (fully provisioned) dæmon.
+  useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
-    setStatus('checking');
-    setError(null);
     (async () => {
       try {
         const res = await fetch(HANDLE_URL, { headers: authHeaders() });
@@ -118,6 +123,7 @@ export function useOnboarding(enabled: boolean): Onboarding {
         } else {
           // Handle exists but no smart account yet — a legacy or half-provisioned account.
           // Re-POST idempotently (with ownerEoa) to bind the SA and finish setup.
+          setStatus('summoning');
           setPendingHandle(data.handle);
         }
       } catch {
@@ -136,13 +142,10 @@ export function useOnboarding(enabled: boolean): Onboarding {
   //    wallet address (the SA owner) before POSTing — the server requires it to derive the SA.
   useEffect(() => {
     if (!pendingHandle) return;
-    if (!ownerEoa) {
-      setStatus('summoning'); // waiting on the embedded wallet; re-fires when ownerEoa arrives
-      return;
-    }
+    // Status is already 'summoning' (set wherever pendingHandle was set). Wait for the embedded
+    // wallet before POSTing; this effect re-fires when ownerEoa arrives.
+    if (!ownerEoa) return;
     let cancelled = false;
-    setStatus('summoning');
-    setError(null);
     const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
     (async () => {
       // Right after sign-up the Dynamic session is briefly `userDataForm`-scoped, so the server's
@@ -210,6 +213,7 @@ export function useOnboarding(enabled: boolean): Onboarding {
 
   const claim = useCallback((handle: string) => {
     setError(null);
+    setStatus('summoning');
     setPendingHandle(handle);
   }, []);
 
@@ -227,8 +231,14 @@ export function useOnboarding(enabled: boolean): Onboarding {
   }, [walletClient]);
 
   const retry = useCallback(() => {
-    if (reservedHandle) setPendingHandle(reservedHandle);
-    else setReloadKey((k) => k + 1);
+    setError(null);
+    if (reservedHandle) {
+      setStatus('summoning');
+      setPendingHandle(reservedHandle);
+    } else {
+      setStatus('checking');
+      setReloadKey((k) => k + 1);
+    }
   }, [reservedHandle]);
 
   return {

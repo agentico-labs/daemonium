@@ -6,7 +6,7 @@
  * exposes confirm(), which POSTs the opaque executionId to /api/daemon/execute (the only
  * signer) and then feeds the outcome back so Ignis can react.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { getAuthToken } from "@dynamic-labs/sdk-react-core";
@@ -40,9 +40,12 @@ export function useDaemon() {
   // working line through the wait. Null when nothing is executing.
   const [executingAction, setExecutingAction] = useState<DaemonAction | null>(null);
   // Latest proposal, mirrored into a ref so confirm() (a stable callback) can read which action
-  // it is confirming without re-creating itself on every proposal change.
+  // it is confirming without re-creating itself on every proposal change. Written post-commit
+  // (in an effect, not during render) per the Rules of React.
   const proposalRef = useRef<ProposalCard | null>(null);
-  proposalRef.current = proposal;
+  useEffect(() => {
+    proposalRef.current = proposal;
+  });
   // After a confirmed action, hold the success/error face through Ignis's spoken
   // reaction so that follow-up turn doesn't snap the flame back to "thinking".
   const reacting = useRef(false);

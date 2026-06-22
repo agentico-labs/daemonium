@@ -13,6 +13,14 @@ import { parseEther, type Address } from "viem";
 import { authHeaders } from "./daemon-client";
 import { createSessionApproval, type ConnectedWalletClient } from "./smart-account-client";
 
+/** Fetch the grant status for a chain; returns the payload, or null on a network/server error. */
+async function fetchGrantStatus(chainId: number) {
+  const r = await fetch(`/api/daemon/grant?chainId=${chainId}`, { headers: authHeaders() }).then(
+    (x) => x.json(),
+  );
+  return r && !r.error ? r : null;
+}
+
 export interface AutonomyState {
   active: boolean;
   agentKey: string | null;
@@ -37,24 +45,30 @@ export function useAutonomy(chainId: number): AutonomyState {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    try {
-      const r = await fetch(`/api/daemon/grant?chainId=${chainId}`, { headers: authHeaders() }).then(
-        (x) => x.json(),
-      );
-      if (r && !r.error) {
-        setActive(Boolean(r.active));
-        setAgentKey(r.agentKey ?? null);
-        setSigner(r.sessionSignerAddress ?? null);
-        setPolicy(r.policy);
-      }
-    } catch {
-      /* status fetch is best-effort */
-    }
+    const r = await fetchGrantStatus(chainId).catch(() => null);
+    if (!r) return;
+    setActive(Boolean(r.active));
+    setAgentKey(r.agentKey ?? null);
+    setSigner(r.sessionSignerAddress ?? null);
+    setPolicy(r.policy);
   }, [chainId]);
 
+  // Load status on mount + whenever the chain changes. Inlined (not `refresh()`) so the state
+  // updates run after an await inside the effect, not synchronously.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    let cancelled = false;
+    (async () => {
+      const r = await fetchGrantStatus(chainId).catch(() => null);
+      if (cancelled || !r) return;
+      setActive(Boolean(r.active));
+      setAgentKey(r.agentKey ?? null);
+      setSigner(r.sessionSignerAddress ?? null);
+      setPolicy(r.policy);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [chainId]);
 
   const grant = useCallback(
     async (opts?: { maxUsdc?: number; days?: number }) => {

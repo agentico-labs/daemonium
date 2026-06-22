@@ -39,10 +39,13 @@ export function useProactiveWatch(opts: {
   const { enabled, paused, run } = opts;
 
   // Read the latest paused/run inside the interval without re-subscribing it every render.
+  // Mirrored post-commit (in an effect, not during render) per the Rules of React.
   const pausedRef = useRef(paused);
-  pausedRef.current = paused;
   const runRef = useRef(run);
-  runRef.current = run;
+  useEffect(() => {
+    pausedRef.current = paused;
+    runRef.current = run;
+  });
 
   const cursorRef = useRef<bigint | null>(null);
   const seenRef = useRef<Set<string>>(new Set());
