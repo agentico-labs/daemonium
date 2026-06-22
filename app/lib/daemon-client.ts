@@ -39,6 +39,9 @@ export function useDaemon() {
   // remember WHICH action is in flight so the confirm zone can show an honest "Sending USDC…"
   // working line through the wait. Null when nothing is executing.
   const [executingAction, setExecutingAction] = useState<DaemonAction | null>(null);
+  // Fallback spoken line for a turn that produced no assistant text (step-cap truncation or an
+  // error). Voiced via the caption path; stays null when the normal text reply carries the voice.
+  const [speakLine, setSpeakLine] = useState<string | null>(null);
   // Latest proposal, mirrored into a ref so confirm() (a stable callback) can read which action
   // it is confirming without re-creating itself on every proposal change. Written post-commit
   // (in an effect, not during render) per the Rules of React.
@@ -74,7 +77,12 @@ export function useDaemon() {
         case "txResult":
           setTxResult(ev);
           break;
-        // "speak"/"subagentResult"/"done" — text already streams into messages.
+        case "speak":
+          // Only arrives as a fallback (a turn with no spoken text). The normal reply voices
+          // itself via the streamed message text, so no "speak" is emitted then.
+          setSpeakLine(ev.text);
+          break;
+        // "subagentResult"/"done" — handled via messages / status.
       }
     },
     // A request-level failure (pre-stream 500, network drop) never emits a data-daemon state event,
@@ -89,6 +97,7 @@ export function useDaemon() {
     (text: string) => {
       reacting.current = false; // a fresh user turn always thinks normally
       setTxResult(null);
+      setSpeakLine(null);
       // Optimistic: flip the flame to `thinking` on the tap, not after the model's first
       // token (~1.8s away). The stream re-emits `thinking` so this just removes the gap.
       setState("thinking");
@@ -102,6 +111,7 @@ export function useDaemon() {
   const stopStream = useCallback(() => {
     void stop();
     reacting.current = false;
+    setSpeakLine(null);
     setState("idle");
   }, [stop]);
 
@@ -189,6 +199,7 @@ export function useDaemon() {
     proposal,
     txResult,
     executingAction,
+    speakLine,
     sendPrompt,
     stopStream,
     confirm,
