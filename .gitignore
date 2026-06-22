@@ -15,8 +15,9 @@ CLAUDE.md
 
 # local tooling & source assets (kept local, not shared)
 /.agents
-skills-lock.json
+/.claude
 /references
+/mocks
 
 # misc
 .DS_Store
