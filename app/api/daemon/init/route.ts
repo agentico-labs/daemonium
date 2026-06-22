@@ -33,7 +33,8 @@ async function postHandler(req: Request) {
   try {
     const ignis = await ensureAgentWallet(key);
     // The user's smart account is the on-chain owner + treasury — that's where funds live and the
-    // address to top up. Fall back to the agent address only for legacy accounts without an SA.
+    // address to top up. Fall back to the agent address when the SA isn't bound yet (legacy or
+    // mid-provisioning).
     const sa = await getUserSmartAccount(userId);
     const fundTarget = (sa?.smartAccount ?? ignis.address) as Address;
 

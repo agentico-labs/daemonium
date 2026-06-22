@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DaemonState } from '@/app/lib/types';
 import {
   STATE_IMAGE,
@@ -22,7 +22,7 @@ const ALL_STATES: DaemonState[] = [
  * natural-colored face/body (core), and a flickering fire (tips) tinted to the
  * live state color, with rising embers, breathing, and parallax depth that
  * leans toward the pointer. The 7 DaemonStates morph into one another (~600ms)
- * rather than snapping. Same Flame({ state }) API as before.
+ * rather than snapping, and the fire pulses to Ignis's voice via getAmplitude.
  *
  * Falls back to the static composite PNG if WebGL is unavailable. Add ?debug to
  * the URL for an on-device panel to force states and tune the look live.
@@ -40,10 +40,15 @@ export function Flame({
   const rendererRef = useRef<FlameRenderer | null>(null);
   // Latest amplitude getter, readable from the rAF loop without re-subscribing it.
   const ampRef = useRef(getAmplitude);
-  ampRef.current = getAmplitude;
 
   const [fallback, setFallback] = useState(false);
-  const [debug, setDebug] = useState(false);
+  // ?debug enables the dev overlay. Read SSR-safely (false on the server) so there's no
+  // render-phase window access and no setState-in-effect.
+  const debug = useSyncExternalStore(
+    () => () => {},
+    () => new URLSearchParams(window.location.search).has('debug'),
+    () => false,
+  );
   const [override, setOverride] = useState<DaemonState | null>(null);
   const [tweak, setTweak] = useState<Partial<FlameParams>>({});
   // Debug-only voice driver: null = use the live TTS amplitude, a number forces
@@ -52,15 +57,21 @@ export function Flame({
   const [dbgVoice, setDbgVoice] = useState<number | null>(null);
   const [dbgTalk, setDbgTalk] = useState(false);
   const dbgVoiceRef = useRef(dbgVoice);
-  dbgVoiceRef.current = dbgVoice;
   const dbgTalkRef = useRef(dbgTalk);
-  dbgTalkRef.current = dbgTalk;
   // Core hue-adapt tuning (all 0..1): how far the core rotates toward the state
   // color, brightness restore, face-ellipse protect amount, and its vertical center.
   const [coreHue, setCoreHue] = useState(0);
   const [coreLum, setCoreLum] = useState(0);
   const [coreProtect, setCoreProtect] = useState(0);
   const [coreFaceY, setCoreFaceY] = useState(0.4);
+
+  // Mirror the latest prop/state into refs post-commit (not during render, per the Rules of
+  // React) so the rAF loop + debug driver read fresh values without re-subscribing.
+  useEffect(() => {
+    ampRef.current = getAmplitude;
+    dbgVoiceRef.current = dbgVoice;
+    dbgTalkRef.current = dbgTalk;
+  });
 
   const effective = override ?? state;
 
@@ -76,8 +87,6 @@ export function Flame({
       return;
     }
     rendererRef.current = r;
-
-    if (new URLSearchParams(window.location.search).has('debug')) setDebug(true);
 
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const applyMotion = () => r.setMotion(!media.matches);

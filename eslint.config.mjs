@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored Claude Code skill assets (design-kit bundle + prototype components) — not app source.
+    ".claude/**",
   ]),
 ]);
 

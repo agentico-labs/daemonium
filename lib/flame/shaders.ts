@@ -4,12 +4,14 @@
 // SAME shader behaves differently per layer via uniforms:
 //   • glow → fully tinted to the state color, soft, gently pulsing (additive)
 //   • core → the face/body: NO distortion, keeps its own designed color
-//            (u_tint = 0) so Ignis never washes out, only breathes
+//            (u_tint = 0) so Ignis never washes out; breathes, and crossfades
+//            its own cel frames (u_texMix) to blink and lip-sync
 //   • tips → the licking flame: heavy heat-haze distortion, tinted to the state
 //            color, white-hot at the brightest pixels, with rising embers
 //
-// Depth comes from parallax (u_offset, scaled per layer). When the real face
-// parts arrive (eyes / mouth), each becomes another pass with its own animation.
+// Depth comes from parallax (u_offset, scaled per layer). The face parts (eyes /
+// mouth) are driven not by extra passes but by the core crossfading between cel
+// frames (blink, talk, talk-wide) via u_tex / u_texNext / u_texMix.
 
 export const VERT_SRC = /* glsl */ `
 attribute vec2 a_pos;          // fullscreen clip-space quad, -1..1

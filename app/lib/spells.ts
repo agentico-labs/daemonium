@@ -11,7 +11,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 
-export type SpellStatus = "running" | "done" | "failed";
+type SpellStatus = "running" | "done" | "failed";
 
 export interface SpellEntry {
   id: string;

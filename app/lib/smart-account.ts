@@ -11,7 +11,7 @@
  *     session key (the "autonomy" path); on-chain policy enforces the user's limits.
  *
  * The default CO-SIGN path is driven client-side (smart-account-client.ts): the server only builds
- * the calls (see actions.ts buildActionCalls); the user's embedded wallet signs the UserOp. The
+ * the calls (see action-calls.ts buildValueCalls); the user's embedded wallet signs the UserOp. The
  * owner private key never reaches the server.
  */
 import "server-only";
@@ -29,8 +29,8 @@ import { userOpFees } from "./aa-gas";
 
 /** EntryPoint + Kernel version this app standardizes on (kept here, not in chain.ts, so the heavy
  *  @zerodev/sdk never leaks into a client bundle that imports chain.ts data). */
-export const ENTRY_POINT = getEntryPoint("0.7");
-export const KERNEL_VERSION = KERNEL_V3_1;
+const ENTRY_POINT = getEntryPoint("0.7");
+const KERNEL_VERSION = KERNEL_V3_1;
 
 /**
  * Multi-chain registry. The SA has the SAME address on every EVM chain, so we can run UserOps on
@@ -60,8 +60,7 @@ const SERVER_RPCS: Record<number, string | undefined> = {
   [polygon.id]: process.env.POLYGON_RPC_URL,
 };
 
-/** Chain ids the SA can transact on at all (we have a viem chain for them). */
-export const SUPPORTED_CHAIN_IDS = Object.keys(VIEM_CHAINS).map(Number);
+/** Whether the SA can transact on a chain (we have a viem chain for it). */
 export const isChainSupported = (chainId: number) => chainId in VIEM_CHAINS;
 
 const pcCache = new Map<number, PublicClient>();
@@ -121,7 +120,7 @@ export function deriveUserKernelAddress(ownerEoa: Address): Promise<Address> {
 
 /** The agent's MPC wallet wrapped as a ZeroDev permission (session-key) signer. The adapter is
  *  declared as the broad viem `Account` union but is a real signing `LocalAccount` (MPC-backed). */
-export async function getSessionSigner(agentKey: string) {
+async function getSessionSigner(agentKey: string) {
   const account = (await getAgentAccount(agentKey)) as LocalAccount;
   return toECDSASigner({ signer: account });
 }

@@ -27,7 +27,7 @@ const resolverAbi = parseAbi([
   "function setAddr(bytes32 node, address a)",
 ]);
 
-export function nodeOf(name: string): Hash {
+function nodeOf(name: string): Hash {
   return namehash(normalize(name)) as Hash;
 }
 
@@ -132,24 +132,4 @@ export function buildSetAgentCardCall(name: string, uri: string): { to: Address;
     }),
     value: 0n,
   };
-}
-
-/** Point an ENS name's `agent-card` text record at the given URI. */
-export async function setAgentCardRecord(opts: {
-  name: string;
-  uri: string;
-  signerLabel: string;
-}): Promise<Hash> {
-  const node = nodeOf(opts.name);
-  const signer = await getSigner(opts.signerLabel);
-  const hash = await signer.writeContract({
-    address: ENS.publicResolver,
-    abi: resolverAbi,
-    functionName: "setText",
-    args: [node, AGENT_CARD_TEXT_KEY, opts.uri],
-    account: signer.account!,
-    chain: signer.chain,
-  });
-  await identityClient.waitForTransactionReceipt({ hash });
-  return hash;
 }
